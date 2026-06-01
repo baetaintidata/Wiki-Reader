@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Wikipedia Column Reader"
+version = "1.0.0"
+id = "artifacts/wiki-columns"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18798
+
+[services.development]
+run = "pnpm --filter @workspace/wiki-columns run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/wiki-columns", "run", "build" ]
+publicDir = "artifacts/wiki-columns/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18798"
+BASE_PATH = "/"
