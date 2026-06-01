@@ -248,6 +248,11 @@
   font-size: 0.9375rem;
   line-height: 1.7;
   color: hsl(var(--foreground));
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  hyphenate-limit-chars: 6 3 3;
+  overflow-wrap: break-word;
 }
 
 .wiki-content a {
