@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink } from "lucide-react";
+import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag } from "lucide-react";
 
 interface WikiArticle {
   title: string;
@@ -156,6 +156,36 @@ function splitIntoSections(html: string): ArticleSection[] {
   }
   flush();
   return sections;
+}
+
+// Replace with your real Amazon Associates tag once approved
+const AMAZON_TAG = "wikireader-placeholder-20";
+
+const GENERIC_SECTIONS = new Set([
+  "overview", "introduction", "background", "history", "definition",
+  "etymology", "summary", "general", "description", "contents",
+]);
+
+function buildAmazonUrl(articleTitle: string, sectionHeading: string | null): string {
+  // Strip any HTML from headings
+  const cleanSection = sectionHeading
+    ? new DOMParser().parseFromString(sectionHeading, "text/html").body.textContent?.trim() ?? ""
+    : "";
+
+  const cleanArticle = articleTitle.trim();
+  const sectionLower = cleanSection.toLowerCase();
+
+  let keywords: string;
+  if (!cleanSection || GENERIC_SECTIONS.has(sectionLower)) {
+    // Generic or missing section — search by article title only
+    keywords = `${cleanArticle} books`;
+  } else {
+    // Specific section — combine section + article for precision
+    keywords = `${cleanSection} ${cleanArticle} books`;
+  }
+
+  const query = encodeURIComponent(keywords);
+  return `https://www.amazon.com/s?k=${query}&i=stripbooks&tag=${AMAZON_TAG}`;
 }
 
 export default function WikiReader() {
@@ -457,21 +487,54 @@ export default function WikiReader() {
               />
               <div className="h-px bg-border mb-5" />
 
-              {splitIntoSections(article.html).map((section, i) => (
-                <div key={i} className="mb-8">
-                  {section.heading && (
-                    <h2
-                      className="text-lg font-semibold font-sans text-foreground border-b border-border pb-1 mb-3"
-                      dangerouslySetInnerHTML={{ __html: section.heading }}
-                    />
-                  )}
-                  <div
-                    className="wiki-content"
-                    style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
-                    dangerouslySetInnerHTML={{ __html: section.html }}
-                  />
-                </div>
-              ))}
+              {(() => {
+                const plainTitle = new DOMParser()
+                  .parseFromString(article.title, "text/html")
+                  .body.textContent ?? article.title;
+                return splitIntoSections(article.html).map((section, i) => {
+                  const amazonUrl = buildAmazonUrl(plainTitle, section.heading);
+                  const plainSection = section.heading
+                    ? new DOMParser().parseFromString(section.heading, "text/html").body.textContent ?? ""
+                    : null;
+                  const label = plainSection
+                    ? `Books on "${plainSection}"`
+                    : `Books on "${plainTitle}"`;
+
+                  return (
+                    <div key={i} className="mb-10">
+                      {section.heading && (
+                        <h2
+                          className="text-lg font-semibold font-sans text-foreground border-b border-border pb-1 mb-3"
+                          dangerouslySetInnerHTML={{ __html: section.heading }}
+                        />
+                      )}
+                      <div
+                        className="wiki-content"
+                        style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
+                        dangerouslySetInnerHTML={{ __html: section.html }}
+                      />
+                      {/* Contextual affiliate link */}
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="flex-1 h-px bg-border/60" />
+                        <a
+                          href={amazonUrl}
+                          target="_blank"
+                          rel="noopener noreferrer sponsored"
+                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition shrink-0 group"
+                        >
+                          <ShoppingBag className="w-3 h-3 group-hover:text-primary" />
+                          <span>{label} →</span>
+                        </a>
+                        <div className="flex-1 h-px bg-border/60" />
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+              {/* FTC affiliate disclosure */}
+              <p className="text-xs text-muted-foreground/60 mt-4 pb-2 text-center">
+                As an Amazon Associate I earn from qualifying purchases.
+              </p>
             </motion.article>
           )}
 
