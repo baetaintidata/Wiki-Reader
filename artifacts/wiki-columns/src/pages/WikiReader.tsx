@@ -167,7 +167,6 @@ export default function WikiReader() {
   const [preview, setPreview] = useState<LinkPreview | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
-  const [showHistoryPanel, setShowHistoryPanel] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,18 +301,6 @@ export default function WikiReader() {
     return () => document.removeEventListener("mousedown", handler);
   }, [showHistory]);
 
-  // Close history panel on outside click
-  useEffect(() => {
-    if (!showHistoryPanel) return;
-    const handler = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest(".history-panel")) {
-        setShowHistoryPanel(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showHistoryPanel]);
-
   return (
     <div className="min-h-screen bg-background">
       {/* Header bar */}
@@ -423,73 +410,6 @@ export default function WikiReader() {
               />
             </div>
           </div>
-
-          {/* History button */}
-          {history.length > 0 && (
-            <div className="relative history-panel shrink-0 border-l border-border pl-3 ml-1">
-              <button
-                type="button"
-                onClick={() => setShowHistoryPanel((v) => !v)}
-                className="h-9 px-3 rounded-md border border-border flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/30 transition"
-                title="Reading history"
-              >
-                <Clock className="w-4 h-4" />
-                <span className="hidden sm:block">History</span>
-                <span className="text-xs bg-primary/10 text-primary rounded-full px-1.5 py-0.5 font-medium">{history.length}</span>
-              </button>
-
-              <AnimatePresence>
-                {showHistoryPanel && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-lg shadow-lg z-50 overflow-hidden"
-                  >
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-                      <div className="flex items-center gap-1.5">
-                        <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">Reading history</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          localStorage.removeItem(HISTORY_KEY);
-                          setHistory([]);
-                          setShowHistoryPanel(false);
-                        }}
-                        className="text-xs text-muted-foreground hover:text-destructive transition"
-                      >
-                        Clear all
-                      </button>
-                    </div>
-                    <div className="max-h-72 overflow-y-auto">
-                      {history.map((item) => (
-                        <button
-                          key={item.url}
-                          type="button"
-                          onClick={() => {
-                            setUrl(item.url);
-                            setShowHistoryPanel(false);
-                            fetchArticle(item.url);
-                          }}
-                          className="w-full text-left px-3 py-2.5 hover:bg-muted transition flex items-start gap-2 group border-b border-border/50 last:border-0"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-foreground truncate">{item.title}</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {new Date(item.visitedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                            </p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
         </div>
       </header>
 
