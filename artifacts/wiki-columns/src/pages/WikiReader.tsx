@@ -74,6 +74,42 @@ function cleanWikiHtml(html: string): string {
 
 const COLUMN_LABELS: Record<number, string> = { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5" };
 
+interface ArticleSection {
+  heading: string | null;
+  html: string;
+}
+
+function splitIntoSections(html: string): ArticleSection[] {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+
+  const sections: ArticleSection[] = [];
+  let currentHeading: string | null = null;
+  let currentNodes: Node[] = [];
+
+  const flush = () => {
+    const wrapper = document.createElement("div");
+    currentNodes.forEach((n) => wrapper.appendChild(n.cloneNode(true)));
+    const content = wrapper.innerHTML.trim();
+    if (content) {
+      sections.push({ heading: currentHeading, html: content });
+    }
+  };
+
+  for (const child of Array.from(div.childNodes)) {
+    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName === "H2") {
+      flush();
+      currentHeading = (child as Element).innerHTML;
+      currentNodes = [];
+    } else {
+      currentNodes.push(child);
+    }
+  }
+  flush();
+
+  return sections;
+}
+
 export default function WikiReader() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -270,16 +306,26 @@ export default function WikiReader() {
               />
               <div className="h-px bg-border mb-5" />
 
-              {/* Columned content — driven by slider */}
-              <div
-                className="wiki-content"
-                style={{
-                  columnCount: columns,
-                  columnGap: "2rem",
-                  columnRule: "1px solid hsl(var(--border))",
-                }}
-                dangerouslySetInnerHTML={{ __html: article.html }}
-              />
+              {/* Each section in its own independent column block */}
+              {splitIntoSections(article.html).map((section, i) => (
+                <div key={i} className="mb-8">
+                  {section.heading && (
+                    <h2
+                      className="text-lg font-semibold font-sans text-foreground border-b border-border pb-1 mb-3"
+                      dangerouslySetInnerHTML={{ __html: section.heading }}
+                    />
+                  )}
+                  <div
+                    className="wiki-content"
+                    style={{
+                      columnCount: columns,
+                      columnGap: "2rem",
+                      columnRule: "1px solid hsl(var(--border))",
+                    }}
+                    dangerouslySetInnerHTML={{ __html: section.html }}
+                  />
+                </div>
+              ))}
             </motion.article>
           )}
 
