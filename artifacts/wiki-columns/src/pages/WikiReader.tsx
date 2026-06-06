@@ -35,26 +35,16 @@ function cleanWikiHtml(html: string): string {
   const div = document.createElement("div");
   div.innerHTML = html;
 
-  // Remove edit section links
   div.querySelectorAll(".mw-editsection").forEach((el) => el.remove());
-  // Remove TOC
   div.querySelectorAll("#toc, .toc").forEach((el) => el.remove());
-  // Remove navboxes / hatnotes / portal boxes
   div.querySelectorAll(".navbox, .navbox-inner, .sistersitebox, .hatnote, .portal, .portalbox").forEach((el) => el.remove());
-  // Remove disambiguation notices
   div.querySelectorAll(".dmbox, .disambiguation").forEach((el) => el.remove());
-  // Remove hidden categories
   div.querySelectorAll(".mw-hidden-catlinks, #catlinks").forEach((el) => el.remove());
-  // Remove references section title (keep text)
   div.querySelectorAll(".references").forEach((el) => el.remove());
   div.querySelectorAll("sup.reference, .reflist, .references-small").forEach((el) => el.remove());
-  // Remove "See also", "References", "Notes", "External links" header sections
   div.querySelectorAll("h2, h3").forEach((heading) => {
     const text = heading.textContent?.trim().toLowerCase() ?? "";
-    if (
-      ["see also", "references", "notes", "external links", "further reading", "bibliography"].includes(text)
-    ) {
-      // Remove the heading and all following siblings until next h2
+    if (["see also", "references", "notes", "external links", "further reading", "bibliography"].includes(text)) {
       let next = heading.nextElementSibling;
       while (next && next.tagName !== "H2") {
         const toRemove = next;
@@ -64,14 +54,10 @@ function cleanWikiHtml(html: string): string {
       heading.remove();
     }
   });
-  // Fix image src paths
   div.querySelectorAll("img").forEach((img) => {
     const src = img.getAttribute("src");
-    if (src && src.startsWith("//")) {
-      img.setAttribute("src", "https:" + src);
-    }
+    if (src && src.startsWith("//")) img.setAttribute("src", "https:" + src);
   });
-  // Fix anchor hrefs to point to wikipedia
   div.querySelectorAll("a[href]").forEach((a) => {
     const href = a.getAttribute("href") ?? "";
     if (href.startsWith("/wiki/")) {
@@ -86,11 +72,14 @@ function cleanWikiHtml(html: string): string {
   return div.innerHTML;
 }
 
+const COLUMN_LABELS: Record<number, string> = { 1: "1", 2: "2", 3: "3", 4: "4", 5: "5" };
+
 export default function WikiReader() {
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [article, setArticle] = useState<WikiArticle | null>(null);
+  const [columns, setColumns] = useState(3);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchArticle = useCallback(async (inputUrl: string) => {
@@ -144,7 +133,7 @@ export default function WikiReader() {
     <div className="min-h-screen bg-background">
       {/* Header bar */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-screen-2xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 shrink-0">
             <Columns3 className="w-5 h-5 text-primary" />
             <span className="font-semibold text-sm tracking-tight hidden sm:block text-foreground">
@@ -154,9 +143,9 @@ export default function WikiReader() {
 
           <form
             onSubmit={handleSubmit}
-            className="flex-1 flex items-center gap-2 max-w-2xl"
+            className="flex-1 flex items-center gap-2 min-w-0"
           >
-            <div className="relative flex-1">
+            <div className="relative flex-1 min-w-0">
               <input
                 ref={inputRef}
                 type="url"
@@ -201,6 +190,24 @@ export default function WikiReader() {
               </button>
             )}
           </form>
+
+          {/* Column slider — always visible */}
+          <div className="flex items-center gap-2 shrink-0 border-l border-border pl-3 ml-1">
+            <span className="text-xs text-muted-foreground hidden sm:block whitespace-nowrap">Columns</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-mono w-3 text-center text-foreground">{COLUMN_LABELS[columns]}</span>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={columns}
+                onChange={(e) => setColumns(Number(e.target.value))}
+                className="w-20 h-1.5 accent-primary cursor-pointer"
+                aria-label="Number of columns"
+              />
+            </div>
+          </div>
         </div>
       </header>
 
@@ -231,7 +238,10 @@ export default function WikiReader() {
               className="mt-8"
             >
               <div className="h-8 w-64 bg-muted rounded animate-pulse mb-6" />
-              <div className="wiki-columns">
+              <div
+                className="wiki-content"
+                style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
+              >
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div
                     key={i}
@@ -260,9 +270,14 @@ export default function WikiReader() {
               />
               <div className="h-px bg-border mb-5" />
 
-              {/* Columned content */}
+              {/* Columned content — driven by slider */}
               <div
-                className="wiki-columns wiki-content"
+                className="wiki-content"
+                style={{
+                  columnCount: columns,
+                  columnGap: "2rem",
+                  columnRule: "1px solid hsl(var(--border))",
+                }}
                 dangerouslySetInnerHTML={{ __html: article.html }}
               />
             </motion.article>
