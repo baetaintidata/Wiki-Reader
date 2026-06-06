@@ -97,9 +97,16 @@ function splitIntoSections(html: string): ArticleSection[] {
   };
 
   for (const child of Array.from(div.childNodes)) {
-    if (child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName === "H2") {
+    const el = child as Element;
+    // Modern Wikipedia wraps h2 in <div class="mw-heading mw-heading2">
+    const isSectionBreak =
+      child.nodeType === Node.ELEMENT_NODE &&
+      (el.tagName === "H2" || el.classList?.contains("mw-heading2"));
+
+    if (isSectionBreak) {
       flush();
-      currentHeading = (child as Element).innerHTML;
+      const h2 = el.tagName === "H2" ? el : el.querySelector("h2");
+      currentHeading = h2?.innerHTML ?? el.innerHTML;
       currentNodes = [];
     } else {
       currentNodes.push(child);
