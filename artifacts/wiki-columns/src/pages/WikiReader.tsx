@@ -240,8 +240,13 @@ export default function WikiReader() {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 
     const rect = target.getBoundingClientRect();
-    const x = rect.left + window.scrollX;
-    const y = rect.bottom + window.scrollY + 6;
+    // Fixed positioning is viewport-relative — no scroll offset needed
+    const popupHeight = 160;
+    const x = rect.left;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const y = spaceBelow >= popupHeight + 8
+      ? rect.bottom + 6          // show below link
+      : rect.top - popupHeight - 6; // flip above link when near bottom
 
     // Check cache
     if (previewCacheRef.current.has(href)) {
@@ -530,7 +535,7 @@ export default function WikiReader() {
             transition={{ duration: 0.12 }}
             className="link-preview-popup fixed z-50 w-80 bg-card border border-border rounded-lg shadow-lg overflow-hidden pointer-events-none"
             style={{
-              left: Math.min(preview.x, window.innerWidth - 340),
+              left: Math.min(Math.max(preview.x, 8), window.innerWidth - 340),
               top: preview.y,
             }}
             onMouseLeave={() => setPreview(null)}
