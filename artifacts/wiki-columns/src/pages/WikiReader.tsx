@@ -80,8 +80,11 @@ interface ArticleSection {
 }
 
 function splitIntoSections(html: string): ArticleSection[] {
-  const div = document.createElement("div");
-  div.innerHTML = html;
+  const container = document.createElement("div");
+  container.innerHTML = html;
+
+  // Wikipedia API wraps all content in div.mw-parser-output — iterate its children
+  const root = container.querySelector(".mw-parser-output") ?? container;
 
   const sections: ArticleSection[] = [];
   let currentHeading: string | null = null;
@@ -96,9 +99,9 @@ function splitIntoSections(html: string): ArticleSection[] {
     }
   };
 
-  for (const child of Array.from(div.childNodes)) {
+  for (const child of Array.from(root.childNodes)) {
     const el = child as Element;
-    // Modern Wikipedia wraps h2 in <div class="mw-heading mw-heading2">
+    // Modern Wikipedia: <div class="mw-heading mw-heading2"><h2>...</h2></div>
     const isSectionBreak =
       child.nodeType === Node.ELEMENT_NODE &&
       (el.tagName === "H2" || el.classList?.contains("mw-heading2"));
