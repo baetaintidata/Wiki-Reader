@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag } from "lucide-react";
+import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search } from "lucide-react";
 
 interface WikiArticle {
   title: string;
@@ -54,6 +54,10 @@ function extractArticleName(url: string): string | null {
     if (match) return decodeURIComponent(match[1]);
     return null;
   }
+}
+
+function isUrl(input: string): boolean {
+  return /^https?:\/\//i.test(input.trim());
 }
 
 function getLangFromUrl(url: string): string {
@@ -197,11 +201,42 @@ export default function WikiReader() {
   const [preview, setPreview] = useState<LinkPreview | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
+  const [suggestions, setSuggestions] = useState<{ title: string; url: string }[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewCacheRef = useRef<Map<string, LinkPreview | null>>(new Map());
   const activeHrefRef = useRef<string | null>(null);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    if (!query.trim() || isUrl(query)) { setSuggestions([]); setShowSuggestions(false); return; }
+    try {
+      const res = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&search=${encodeURIComponent(query)}&limit=6&namespace=0`
+      );
+      const [, titles, , urls] = await res.json() as [string, string[], string[], string[]];
+      const items = titles.map((t, i) => ({ title: t, url: urls[i] }));
+      setSuggestions(items);
+      setShowSuggestions(items.length > 0);
+    } catch {
+      setSuggestions([]);
+    }
+  }, []);
+
+  const handleInputChange = useCallback((value: string) => {
+    setUrl(value);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!isUrl(value) && value.trim().length > 1) {
+      setShowHistory(false);
+      searchTimerRef.current = setTimeout(() => fetchSuggestions(value), 250);
+    } else {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      if (!value.trim()) setShowHistory(history.length > 0);
+    }
+  }, [fetchSuggestions, history.length]);
 
   const fetchArticle = useCallback(async (inputUrl: string) => {
     const name = extractArticleName(inputUrl);
@@ -214,6 +249,7 @@ export default function WikiReader() {
     setError(null);
     setArticle(null);
     setShowHistory(false);
+    setShowSuggestions(false);
 
     try {
       const apiUrl = `https://${lang}.wikipedia.org/w/api.php?action=parse&format=json&origin=*&page=${encodeURIComponent(name)}&prop=text|displaytitle&disablelimitreport=1&disableeditsection=1`;
@@ -243,15 +279,41 @@ export default function WikiReader() {
     }
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    fetchArticle(url);
-  };
+    const trimmed = url.trim();
+    if (!trimmed) return;
+    setShowSuggestions(false);
+    setShowHistory(false);
+
+    if (isUrl(trimmed)) {
+      fetchArticle(trimmed);
+    } else {
+      // Search phrase — fetch first opensearch result
+      setLoading(true);
+      setError(null);
+      setArticle(null);
+      try {
+        const res = await fetch(
+          `https://en.wikipedia.org/w/api.php?action=opensearch&format=json&origin=*&search=${encodeURIComponent(trimmed)}&limit=1&namespace=0`
+        );
+        const [, titles, , urls] = await res.json() as [string, string[], string[], string[]];
+        if (!titles.length) throw new Error(`No Wikipedia article found for "${trimmed}".`);
+        setLoading(false);
+        fetchArticle(urls[0]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Search failed.");
+        setLoading(false);
+      }
+    }
+  }, [url, fetchArticle]);
 
   const handleClear = () => {
     setArticle(null);
     setError(null);
     setUrl("");
+    setSuggestions([]);
+    setShowSuggestions(false);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
@@ -352,11 +414,12 @@ export default function WikiReader() {
             <div className="relative flex-1 min-w-0">
               <input
                 ref={inputRef}
-                type="url"
+                type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onFocus={() => history.length > 0 && setShowHistory(true)}
-                placeholder="https://en.wikipedia.org/wiki/..."
+                onChange={(e) => handleInputChange(e.target.value)}
+                onFocus={() => { if (!url.trim() && history.length > 0) setShowHistory(true); }}
+                onKeyDown={(e) => { if (e.key === "Escape") { setShowSuggestions(false); setShowHistory(false); } }}
+                placeholder="Paste a Wikipedia URL or search by topic…"
                 className="w-full h-9 pl-3 pr-8 rounded-md border border-input bg-card text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
                 autoFocus
                 autoComplete="off"
@@ -364,7 +427,7 @@ export default function WikiReader() {
               {url && (
                 <button
                   type="button"
-                  onClick={() => setUrl("")}
+                  onClick={() => handleInputChange("")}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
                   tabIndex={-1}
                 >
@@ -372,9 +435,9 @@ export default function WikiReader() {
                 </button>
               )}
 
-              {/* History dropdown */}
+              {/* Unified dropdown: search suggestions OR history */}
               <AnimatePresence>
-                {showHistory && history.length > 0 && (
+                {(showSuggestions || showHistory) && (
                   <motion.div
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -382,27 +445,44 @@ export default function WikiReader() {
                     transition={{ duration: 0.12 }}
                     className="history-dropdown absolute left-0 right-0 top-full mt-1 z-50 bg-card border border-border rounded-md shadow-md overflow-hidden"
                   >
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border">
-                      <Clock className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground font-medium">Recent articles</span>
-                    </div>
-                    {history.map((item) => (
-                      <button
-                        key={item.url}
-                        type="button"
-                        onClick={() => {
-                          setUrl(item.url);
-                          setShowHistory(false);
-                          fetchArticle(item.url);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition flex items-center gap-2 group"
-                      >
-                        <span className="flex-1 truncate">{item.title}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {new Date(item.visitedAt).toLocaleDateString()}
-                        </span>
-                      </button>
-                    ))}
+                    {showSuggestions ? (
+                      <>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border">
+                          <Search className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground font-medium">Wikipedia articles</span>
+                        </div>
+                        {suggestions.map((s) => (
+                          <button
+                            key={s.url}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setUrl(s.title); setShowSuggestions(false); fetchArticle(s.url); }}
+                            className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition flex items-center gap-2"
+                          >
+                            <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span className="flex-1 truncate">{s.title}</span>
+                          </button>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border">
+                          <Clock className="w-3 h-3 text-muted-foreground" />
+                          <span className="text-xs text-muted-foreground font-medium">Recent articles</span>
+                        </div>
+                        {history.map((item) => (
+                          <button
+                            key={item.url}
+                            type="button"
+                            onMouseDown={(e) => { e.preventDefault(); setUrl(item.title); setShowHistory(false); fetchArticle(item.url); }}
+                            className="w-full text-left px-3 py-2 text-sm text-foreground hover:bg-muted transition flex items-center gap-2"
+                          >
+                            <Clock className="w-3 h-3 text-muted-foreground shrink-0" />
+                            <span className="flex-1 truncate">{item.title}</span>
+                            <span className="text-xs text-muted-foreground shrink-0">{new Date(item.visitedAt).toLocaleDateString()}</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -413,8 +493,10 @@ export default function WikiReader() {
               disabled={loading || !url.trim()}
               className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5 hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition shrink-0"
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : isUrl(url) ? (
                 <><span>Load</span><ArrowRight className="w-3.5 h-3.5" /></>
+              ) : (
+                <><Search className="w-3.5 h-3.5" /><span>Search</span></>
               )}
             </button>
             {article && (
