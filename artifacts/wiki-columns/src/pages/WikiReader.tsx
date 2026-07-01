@@ -378,22 +378,10 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel,
             className="overflow-hidden"
           >
             <div className="mt-2 border border-border/50 rounded-md bg-card px-3 py-3 space-y-3">
-              {/* Header: title + citation style toggle */}
-              <div className="flex items-center gap-2">
+              {/* Header */}
+              <div className="flex items-center gap-1.5">
                 <span className="font-semibold text-foreground/80 text-xs">Research Papers</span>
-                <span className="text-muted-foreground/60 text-[10px]">via CrossRef</span>
-                <div className="ml-auto flex items-center rounded border border-border overflow-hidden text-[10px] font-medium">
-                  {(["APA", "Turabian"] as CitationStyle[]).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => onStyleChange(s)}
-                      className={`px-2 py-0.5 transition ${citationStyle === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-muted-foreground/60 text-[10px]">via CrossRef · {citationStyle}</span>
               </div>
 
               {/* Paper results */}
@@ -807,6 +795,23 @@ export default function WikiReader() {
                 className="w-20 h-1.5 accent-primary cursor-pointer"
                 aria-label="Number of columns"
               />
+            </div>
+          </div>
+
+          {/* Citation style toggle */}
+          <div className="flex items-center gap-2 shrink-0 border-l border-border pl-3 ml-1">
+            <span className="text-xs text-muted-foreground hidden sm:block whitespace-nowrap">Citation</span>
+            <div className="flex items-center rounded border border-border overflow-hidden text-xs font-medium">
+              {(["APA", "Turabian"] as CitationStyle[]).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setCitationStyle(s)}
+                  className={`px-2.5 py-1 transition ${citationStyle === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
         </div>
