@@ -213,30 +213,38 @@ function buildScholarUrl(query: string) {
   };
 }
 
-async function fetchArxivPapers(query: string): Promise<ArxivPaper[]> {
-  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=4&sortBy=relevance&sortOrder=descending`;
+async function fetchOpenAlexPapers(query: string): Promise<ArxivPaper[]> {
+  const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=4&select=id,title,authorships,publication_year,doi,open_access,primary_location`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error("arXiv request failed");
-  const text = await res.text();
-  const xml = new DOMParser().parseFromString(text, "application/xml");
-  const entries = Array.from(xml.querySelectorAll("entry"));
-  return entries.map((entry) => {
-    const rawId = entry.querySelector("id")?.textContent?.trim() ?? "";
-    const absUrl = rawId.replace("http://", "https://");
-    const pdfUrl = absUrl.replace("/abs/", "/pdf/");
-    const title = entry.querySelector("title")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
-    const authors = Array.from(entry.querySelectorAll("author name"))
-      .map((n) => n.textContent?.trim() ?? "")
-      .slice(0, 3);
-    const published = entry.querySelector("published")?.textContent?.trim() ?? "";
-    const year = published.slice(0, 4);
-    return { id: rawId, title, authors, year, pdfUrl, absUrl };
-  }).filter((p) => p.title);
+  if (!res.ok) throw new Error("OpenAlex request failed");
+  const json = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (json.results ?? []).map((w: any) => {
+    const authors: string[] = (w.authorships ?? [])
+      .slice(0, 3)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((a: any) => a.author?.display_name ?? "")
+      .filter(Boolean);
+    const absUrl: string =
+      w.primary_location?.landing_page_url ??
+      (w.doi ? `https://doi.org/${w.doi.replace("https://doi.org/", "")}` : "");
+    const pdfUrl: string = w.open_access?.oa_url ?? absUrl;
+    return {
+      id: w.id ?? absUrl,
+      title: (w.title ?? "").replace(/\s+/g, " ").trim(),
+      authors,
+      year: String(w.publication_year ?? ""),
+      pdfUrl,
+      absUrl,
+    };
+  }).filter((p: ArxivPaper) => p.title && p.absUrl);
 }
 
-function SectionResearch({ articleTitle, sectionHeading }: {
+function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel }: {
   articleTitle: string;
   sectionHeading: string | null;
+  amazonUrl: string;
+  amazonLabel: string;
 }) {
   const [open, setOpen] = useState(false);
   const [papers, setPapers] = useState<ArxivPaper[] | null>(null);
@@ -245,6 +253,7 @@ function SectionResearch({ articleTitle, sectionHeading }: {
 
   const query = buildResearchQuery(articleTitle, sectionHeading);
   const links = buildScholarUrl(query);
+  const sectionLabel = sectionHeading ?? articleTitle;
 
   const handleOpen = async () => {
     setOpen((v) => !v);
@@ -252,10 +261,10 @@ function SectionResearch({ articleTitle, sectionHeading }: {
     setFetching(true);
     setFetchError(null);
     try {
-      const results = await fetchArxivPapers(query);
+      const results = await fetchOpenAlexPapers(query);
       setPapers(results);
     } catch {
-      setFetchError("Could not reach arXiv. Try a search link below.");
+      setFetchError("Could not load papers. Use a search link below.");
       setPapers([]);
     } finally {
       setFetching(false);
@@ -263,22 +272,31 @@ function SectionResearch({ articleTitle, sectionHeading }: {
   };
 
   return (
-    <div className="mt-2 border border-border/50 rounded-md overflow-hidden text-xs">
-      {/* Toggle header */}
-      <button
-        type="button"
-        onClick={handleOpen}
-        className="w-full flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/70 transition text-muted-foreground hover:text-foreground group"
-      >
-        <FlaskConical className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-        <span className="font-medium text-xs">
-          Research Papers
-          {sectionHeading
-            ? ` — ${new DOMParser().parseFromString(sectionHeading, "text/html").body.textContent?.trim()}`
-            : ` — ${articleTitle}`}
-        </span>
-        <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
+    <div className="mt-3 text-xs">
+      {/* Single row: Research Papers toggle + Books link */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-px bg-border/60" />
+        <button
+          type="button"
+          onClick={handleOpen}
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition shrink-0"
+        >
+          <FlaskConical className="w-3 h-3 text-primary/70" />
+          <span>{sectionLabel}</span>
+          <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        </button>
+        <div className="w-px h-3 bg-border/60 shrink-0" />
+        <a
+          href={amazonUrl}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition shrink-0"
+        >
+          <ShoppingBag className="w-3 h-3" />
+          <span>{amazonLabel} →</span>
+        </a>
+        <div className="flex-1 h-px bg-border/60" />
+      </div>
 
       {/* Expanded panel */}
       <AnimatePresence initial={false}>
@@ -291,27 +309,27 @@ function SectionResearch({ articleTitle, sectionHeading }: {
             transition={{ duration: 0.18 }}
             className="overflow-hidden"
           >
-            <div className="px-3 py-3 space-y-3 bg-card">
-              {/* arXiv results */}
+            <div className="mt-2 border border-border/50 rounded-md bg-card px-3 py-3 space-y-3">
+              {/* Paper results from OpenAlex */}
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
-                  <span className="font-semibold text-foreground/80">arXiv preprints</span>
-                  <span className="text-muted-foreground/60 text-[10px]">(open access)</span>
+                  <span className="font-semibold text-foreground/80">Research Papers</span>
+                  <span className="text-muted-foreground/60 text-[10px]">via OpenAlex</span>
                 </div>
                 {fetching && (
                   <div className="flex items-center gap-1.5 text-muted-foreground py-1">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Searching arXiv…</span>
+                    <span>Searching academic literature…</span>
                   </div>
                 )}
                 {fetchError && <p className="text-destructive/80 text-[11px]">{fetchError}</p>}
                 {papers && papers.length === 0 && !fetchError && (
-                  <p className="text-muted-foreground text-[11px]">No matching preprints found on arXiv for this topic.</p>
+                  <p className="text-muted-foreground text-[11px]">No papers found for this topic. Try a database below.</p>
                 )}
                 {papers && papers.length > 0 && (
-                  <ul className="space-y-2">
+                  <ul className="space-y-2.5">
                     {papers.map((p) => (
-                      <li key={p.id} className="flex gap-2 items-start group/paper">
+                      <li key={p.id} className="flex gap-2 items-start">
                         <FileText className="w-3 h-3 text-primary/60 mt-0.5 shrink-0" />
                         <div className="min-w-0">
                           <a
@@ -323,9 +341,11 @@ function SectionResearch({ articleTitle, sectionHeading }: {
                             {p.title}
                           </a>
                           <p className="text-muted-foreground text-[11px] mt-0.5">
-                            {p.authors.join(", ")}{p.authors.length === 3 ? " et al." : ""} · {p.year}
-                            {" · "}
-                            <a href={p.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-primary/80 hover:text-primary">PDF</a>
+                            {p.authors.join(", ")}{p.authors.length === 3 ? " et al." : ""}
+                            {p.year ? ` · ${p.year}` : ""}
+                            {p.pdfUrl && p.pdfUrl !== p.absUrl && (
+                              <>{" · "}<a href={p.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-primary/80 hover:text-primary">Open Access PDF</a></>
+                            )}
                           </p>
                         </div>
                       </li>
@@ -334,7 +354,7 @@ function SectionResearch({ articleTitle, sectionHeading }: {
                 )}
               </div>
 
-              {/* Search-engine links */}
+              {/* Database search links */}
               <div className="border-t border-border/40 pt-2">
                 <p className="text-muted-foreground/70 mb-1.5 text-[11px]">Search in academic databases:</p>
                 <div className="flex flex-wrap gap-2">
@@ -769,26 +789,13 @@ export default function WikiReader() {
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
 
-                      {/* Research papers (arXiv + database links) */}
+                      {/* Research papers + Books — combined row */}
                       <SectionResearch
                         articleTitle={plainTitle}
                         sectionHeading={plainSection}
+                        amazonUrl={amazonUrl}
+                        amazonLabel={label}
                       />
-
-                      {/* Contextual affiliate link */}
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="flex-1 h-px bg-border/60" />
-                        <a
-                          href={amazonUrl}
-                          target="_blank"
-                          rel="noopener noreferrer sponsored"
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition shrink-0 group"
-                        >
-                          <ShoppingBag className="w-3 h-3 group-hover:text-primary" />
-                          <span>{label} →</span>
-                        </a>
-                        <div className="flex-1 h-px bg-border/60" />
-                      </div>
                     </div>
                   );
                 });
