@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search } from "lucide-react";
+import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search, FlaskConical, ChevronDown, FileText } from "lucide-react";
 
 interface WikiArticle {
   title: string;
@@ -171,25 +171,198 @@ const GENERIC_SECTIONS = new Set([
 ]);
 
 function buildAmazonUrl(articleTitle: string, sectionHeading: string | null): string {
-  // Strip any HTML from headings
   const cleanSection = sectionHeading
     ? new DOMParser().parseFromString(sectionHeading, "text/html").body.textContent?.trim() ?? ""
     : "";
-
   const cleanArticle = articleTitle.trim();
   const sectionLower = cleanSection.toLowerCase();
+  const keywords = !cleanSection || GENERIC_SECTIONS.has(sectionLower)
+    ? `${cleanArticle} books`
+    : `${cleanSection} ${cleanArticle} books`;
+  return `https://www.amazon.com/s?k=${encodeURIComponent(keywords)}&i=stripbooks&tag=${AMAZON_TAG}`;
+}
 
-  let keywords: string;
-  if (!cleanSection || GENERIC_SECTIONS.has(sectionLower)) {
-    // Generic or missing section — search by article title only
-    keywords = `${cleanArticle} books`;
-  } else {
-    // Specific section — combine section + article for precision
-    keywords = `${cleanSection} ${cleanArticle} books`;
-  }
+// ── Research Papers ──────────────────────────────────────────────────────────
 
-  const query = encodeURIComponent(keywords);
-  return `https://www.amazon.com/s?k=${query}&i=stripbooks&tag=${AMAZON_TAG}`;
+interface ArxivPaper {
+  id: string;
+  title: string;
+  authors: string[];
+  year: string;
+  pdfUrl: string;
+  absUrl: string;
+}
+
+function buildResearchQuery(articleTitle: string, sectionHeading: string | null): string {
+  const cleanSection = sectionHeading
+    ? new DOMParser().parseFromString(sectionHeading, "text/html").body.textContent?.trim() ?? ""
+    : "";
+  const sectionLower = cleanSection.toLowerCase();
+  return !cleanSection || GENERIC_SECTIONS.has(sectionLower)
+    ? articleTitle
+    : `${articleTitle} ${cleanSection}`;
+}
+
+function buildScholarUrl(query: string) {
+  const q = encodeURIComponent(query);
+  return {
+    googleScholar: `https://scholar.google.com/scholar?q=${q}`,
+    semanticScholar: `https://www.semanticscholar.org/search?q=${q}&sort=Relevance`,
+    scopus: `https://www.scopus.com/results/results.uri?query=${q}&search_type=kws`,
+    pubmed: `https://pubmed.ncbi.nlm.nih.gov/?term=${q}`,
+  };
+}
+
+async function fetchArxivPapers(query: string): Promise<ArxivPaper[]> {
+  const url = `https://export.arxiv.org/api/query?search_query=all:${encodeURIComponent(query)}&max_results=4&sortBy=relevance&sortOrder=descending`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("arXiv request failed");
+  const text = await res.text();
+  const xml = new DOMParser().parseFromString(text, "application/xml");
+  const entries = Array.from(xml.querySelectorAll("entry"));
+  return entries.map((entry) => {
+    const rawId = entry.querySelector("id")?.textContent?.trim() ?? "";
+    const absUrl = rawId.replace("http://", "https://");
+    const pdfUrl = absUrl.replace("/abs/", "/pdf/");
+    const title = entry.querySelector("title")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    const authors = Array.from(entry.querySelectorAll("author name"))
+      .map((n) => n.textContent?.trim() ?? "")
+      .slice(0, 3);
+    const published = entry.querySelector("published")?.textContent?.trim() ?? "";
+    const year = published.slice(0, 4);
+    return { id: rawId, title, authors, year, pdfUrl, absUrl };
+  }).filter((p) => p.title);
+}
+
+function SectionResearch({ articleTitle, sectionHeading }: {
+  articleTitle: string;
+  sectionHeading: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [papers, setPapers] = useState<ArxivPaper[] | null>(null);
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+
+  const query = buildResearchQuery(articleTitle, sectionHeading);
+  const links = buildScholarUrl(query);
+
+  const handleOpen = async () => {
+    setOpen((v) => !v);
+    if (papers !== null || fetching) return;
+    setFetching(true);
+    setFetchError(null);
+    try {
+      const results = await fetchArxivPapers(query);
+      setPapers(results);
+    } catch {
+      setFetchError("Could not reach arXiv. Try a search link below.");
+      setPapers([]);
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 border border-border/50 rounded-md overflow-hidden text-xs">
+      {/* Toggle header */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/70 transition text-muted-foreground hover:text-foreground group"
+      >
+        <FlaskConical className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+        <span className="font-medium text-xs">
+          Research Papers
+          {sectionHeading
+            ? ` — ${new DOMParser().parseFromString(sectionHeading, "text/html").body.textContent?.trim()}`
+            : ` — ${articleTitle}`}
+        </span>
+        <ChevronDown className={`w-3 h-3 ml-auto transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {/* Expanded panel */}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden"
+          >
+            <div className="px-3 py-3 space-y-3 bg-card">
+              {/* arXiv results */}
+              <div>
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="font-semibold text-foreground/80">arXiv preprints</span>
+                  <span className="text-muted-foreground/60 text-[10px]">(open access)</span>
+                </div>
+                {fetching && (
+                  <div className="flex items-center gap-1.5 text-muted-foreground py-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Searching arXiv…</span>
+                  </div>
+                )}
+                {fetchError && <p className="text-destructive/80 text-[11px]">{fetchError}</p>}
+                {papers && papers.length === 0 && !fetchError && (
+                  <p className="text-muted-foreground text-[11px]">No matching preprints found on arXiv for this topic.</p>
+                )}
+                {papers && papers.length > 0 && (
+                  <ul className="space-y-2">
+                    {papers.map((p) => (
+                      <li key={p.id} className="flex gap-2 items-start group/paper">
+                        <FileText className="w-3 h-3 text-primary/60 mt-0.5 shrink-0" />
+                        <div className="min-w-0">
+                          <a
+                            href={p.absUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-foreground/90 hover:text-primary transition leading-snug line-clamp-2"
+                          >
+                            {p.title}
+                          </a>
+                          <p className="text-muted-foreground text-[11px] mt-0.5">
+                            {p.authors.join(", ")}{p.authors.length === 3 ? " et al." : ""} · {p.year}
+                            {" · "}
+                            <a href={p.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-primary/80 hover:text-primary">PDF</a>
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              {/* Search-engine links */}
+              <div className="border-t border-border/40 pt-2">
+                <p className="text-muted-foreground/70 mb-1.5 text-[11px]">Search in academic databases:</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "Google Scholar", href: links.googleScholar },
+                    { label: "Semantic Scholar", href: links.semanticScholar },
+                    { label: "PubMed", href: links.pubmed },
+                    { label: "Scopus", href: links.scopus },
+                  ].map(({ label, href }) => (
+                    <a
+                      key={label}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded border border-border hover:border-primary/50 hover:text-primary text-muted-foreground transition"
+                    >
+                      <ExternalLink className="w-2.5 h-2.5" />
+                      {label}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
 export default function WikiReader() {
@@ -595,8 +768,15 @@ export default function WikiReader() {
                         style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
+
+                      {/* Research papers (arXiv + database links) */}
+                      <SectionResearch
+                        articleTitle={plainTitle}
+                        sectionHeading={plainSection}
+                      />
+
                       {/* Contextual affiliate link */}
-                      <div className="mt-3 flex items-center gap-2">
+                      <div className="mt-2 flex items-center gap-2">
                         <div className="flex-1 h-px bg-border/60" />
                         <a
                           href={amazonUrl}
