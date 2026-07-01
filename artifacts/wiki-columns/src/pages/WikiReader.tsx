@@ -213,30 +213,24 @@ function buildScholarUrl(query: string) {
   };
 }
 
-async function fetchOpenAlexPapers(query: string): Promise<ArxivPaper[]> {
-  const url = `https://api.openalex.org/works?search=${encodeURIComponent(query)}&per-page=4&select=id,title,authorships,publication_year,doi,open_access,primary_location`;
+async function fetchCrossRefPapers(query: string): Promise<ArxivPaper[]> {
+  const url =
+    `https://api.crossref.org/works?query=${encodeURIComponent(query)}` +
+    `&rows=4&filter=type:journal-article&select=title,author,published,DOI`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error("OpenAlex request failed");
+  if (!res.ok) throw new Error(`CrossRef ${res.status}`);
   const json = await res.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (json.results ?? []).map((w: any) => {
-    const authors: string[] = (w.authorships ?? [])
+  return (json.message?.items ?? []).map((item: any) => {
+    const title: string = (item.title?.[0] ?? "").replace(/\s+/g, " ").trim();
+    const authors: string[] = (item.author ?? [])
       .slice(0, 3)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((a: any) => a.author?.display_name ?? "")
+      .map((a: any) => [a.given, a.family].filter(Boolean).join(" ").trim())
       .filter(Boolean);
-    const absUrl: string =
-      w.primary_location?.landing_page_url ??
-      (w.doi ? `https://doi.org/${w.doi.replace("https://doi.org/", "")}` : "");
-    const pdfUrl: string = w.open_access?.oa_url ?? absUrl;
-    return {
-      id: w.id ?? absUrl,
-      title: (w.title ?? "").replace(/\s+/g, " ").trim(),
-      authors,
-      year: String(w.publication_year ?? ""),
-      pdfUrl,
-      absUrl,
-    };
+    const year: string = String(item.published?.["date-parts"]?.[0]?.[0] ?? "");
+    const absUrl = item.DOI ? `https://doi.org/${item.DOI}` : "";
+    return { id: item.DOI ?? title, title, authors, year, pdfUrl: absUrl, absUrl };
   }).filter((p: ArxivPaper) => p.title && p.absUrl);
 }
 
@@ -261,7 +255,7 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel 
     setFetching(true);
     setFetchError(null);
     try {
-      const results = await fetchOpenAlexPapers(query);
+      const results = await fetchCrossRefPapers(query);
       setPapers(results);
     } catch {
       setFetchError("Could not load papers. Use a search link below.");
@@ -310,11 +304,11 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel 
             className="overflow-hidden"
           >
             <div className="mt-2 border border-border/50 rounded-md bg-card px-3 py-3 space-y-3">
-              {/* Paper results from OpenAlex */}
+              {/* Paper results from CrossRef */}
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <span className="font-semibold text-foreground/80">Research Papers</span>
-                  <span className="text-muted-foreground/60 text-[10px]">via OpenAlex</span>
+                  <span className="text-muted-foreground/60 text-[10px]">via CrossRef</span>
                 </div>
                 {fetching && (
                   <div className="flex items-center gap-1.5 text-muted-foreground py-1">
