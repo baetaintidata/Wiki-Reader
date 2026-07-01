@@ -184,11 +184,19 @@ function buildAmazonUrl(articleTitle: string, sectionHeading: string | null): st
 
 // ── Research Papers ──────────────────────────────────────────────────────────
 
+type CitationStyle = "APA" | "Turabian";
+
 interface ArxivPaper {
   id: string;
   title: string;
+  /** Raw CrossRef authors: [{given, family}] */
+  rawAuthors: { given: string; family: string }[];
   authors: string[];
   year: string;
+  journal: string;
+  volume: string;
+  issue: string;
+  pages: string;
   pdfUrl: string;
   absUrl: string;
 }
@@ -216,29 +224,95 @@ function buildScholarUrl(query: string) {
 async function fetchCrossRefPapers(query: string): Promise<ArxivPaper[]> {
   const url =
     `https://api.crossref.org/works?query=${encodeURIComponent(query)}` +
-    `&rows=4&filter=type:journal-article&select=title,author,published,DOI`;
+    `&rows=4&filter=type:journal-article` +
+    `&select=title,author,published,DOI,container-title,volume,issue,page`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`CrossRef ${res.status}`);
   const json = await res.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (json.message?.items ?? []).map((item: any) => {
     const title: string = (item.title?.[0] ?? "").replace(/\s+/g, " ").trim();
-    const authors: string[] = (item.author ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawAuthors = (item.author ?? []).slice(0, 6).map((a: any) => ({
+      given: (a.given ?? "").trim(),
+      family: (a.family ?? "").trim(),
+    })).filter((a: { given: string; family: string }) => a.family);
+    const authors: string[] = rawAuthors
       .slice(0, 3)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((a: any) => [a.given, a.family].filter(Boolean).join(" ").trim())
-      .filter(Boolean);
+      .map((a: { given: string; family: string }) => [a.given, a.family].filter(Boolean).join(" "));
     const year: string = String(item.published?.["date-parts"]?.[0]?.[0] ?? "");
+    const journal: string = (item["container-title"]?.[0] ?? "").trim();
+    const volume: string = (item.volume ?? "").trim();
+    const issue: string = (item.issue ?? "").trim();
+    const pages: string = (item.page ?? "").trim();
     const absUrl = item.DOI ? `https://doi.org/${item.DOI}` : "";
-    return { id: item.DOI ?? title, title, authors, year, pdfUrl: absUrl, absUrl };
+    return { id: item.DOI ?? title, title, rawAuthors, authors, year, journal, volume, issue, pages, pdfUrl: absUrl, absUrl };
   }).filter((p: ArxivPaper) => p.title && p.absUrl);
 }
 
-function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel }: {
+/** APA 7: Last, F. M., & Last, F. M. (Year). Title. Journal, volume(issue), pages. https://doi.org/... */
+function formatAPA(p: ArxivPaper): string {
+  const authorStr = (() => {
+    const all = p.rawAuthors;
+    if (!all.length) return "";
+    const fmt = (a: { given: string; family: string }) => {
+      const initials = a.given.split(/\s+/).map(n => n[0] ? n[0] + "." : "").join(" ");
+      return `${a.family}, ${initials}`.trim();
+    };
+    if (all.length === 1) return fmt(all[0]);
+    if (all.length <= 6) return all.slice(0, -1).map(fmt).join(", ") + ", & " + fmt(all[all.length - 1]);
+    return all.slice(0, 6).map(fmt).join(", ") + ", . . . " + fmt(all[all.length - 1]);
+  })();
+  const parts: string[] = [];
+  if (authorStr) parts.push(authorStr);
+  if (p.year) parts.push(`(${p.year})`);
+  if (p.title) parts.push(`${p.title}.`);
+  if (p.journal) {
+    let journalPart = `*${p.journal}*`;
+    if (p.volume) journalPart += `, *${p.volume}*`;
+    if (p.issue) journalPart += `(${p.issue})`;
+    if (p.pages) journalPart += `, ${p.pages}`;
+    parts.push(journalPart + ".");
+  }
+  parts.push(p.absUrl);
+  return parts.join(" ");
+}
+
+/** Turabian Notes-Bibliography: Last, First, and First Last. "Title." Journal volume, no. issue (Year): pages. https://doi.org/... */
+function formatTurabian(p: ArxivPaper): string {
+  const authorStr = (() => {
+    const all = p.rawAuthors;
+    if (!all.length) return "";
+    const fmtFirst = (a: { given: string; family: string }) => `${a.family}, ${a.given}`.trim();
+    const fmtRest = (a: { given: string; family: string }) => `${a.given} ${a.family}`.trim();
+    if (all.length === 1) return fmtFirst(all[0]);
+    if (all.length <= 3) return [fmtFirst(all[0]), ...all.slice(1).map(fmtRest)].join(", and ");
+    return fmtFirst(all[0]) + " et al.";
+  })();
+  const parts: string[] = [];
+  if (authorStr) parts.push(authorStr + ".");
+  if (p.title) parts.push(`"${p.title}."`);
+  if (p.journal) {
+    let journalPart = `*${p.journal}*`;
+    if (p.volume) journalPart += ` ${p.volume}`;
+    if (p.issue) journalPart += `, no. ${p.issue}`;
+    if (p.year) journalPart += ` (${p.year})`;
+    if (p.pages) journalPart += `: ${p.pages}`;
+    parts.push(journalPart + ".");
+  } else if (p.year) {
+    parts.push(`${p.year}.`);
+  }
+  parts.push(p.absUrl);
+  return parts.join(" ");
+}
+
+function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel, citationStyle, onStyleChange }: {
   articleTitle: string;
   sectionHeading: string | null;
   amazonUrl: string;
   amazonLabel: string;
+  citationStyle: CitationStyle;
+  onStyleChange: (s: CitationStyle) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [papers, setPapers] = useState<ArxivPaper[] | null>(null);
@@ -276,7 +350,7 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel 
           className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition shrink-0"
         >
           <FlaskConical className="w-3 h-3 text-primary/70" />
-          <span>{sectionLabel}</span>
+          <span>Researches on &ldquo;{sectionLabel}&rdquo;</span>
           <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
         </button>
         <div className="w-px h-3 bg-border/60 shrink-0" />
@@ -304,12 +378,26 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel 
             className="overflow-hidden"
           >
             <div className="mt-2 border border-border/50 rounded-md bg-card px-3 py-3 space-y-3">
-              {/* Paper results from CrossRef */}
-              <div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="font-semibold text-foreground/80">Research Papers</span>
-                  <span className="text-muted-foreground/60 text-[10px]">via CrossRef</span>
+              {/* Header: title + citation style toggle */}
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-foreground/80 text-xs">Research Papers</span>
+                <span className="text-muted-foreground/60 text-[10px]">via CrossRef</span>
+                <div className="ml-auto flex items-center rounded border border-border overflow-hidden text-[10px] font-medium">
+                  {(["APA", "Turabian"] as CitationStyle[]).map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => onStyleChange(s)}
+                      className={`px-2 py-0.5 transition ${citationStyle === s ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                    >
+                      {s}
+                    </button>
+                  ))}
                 </div>
+              </div>
+
+              {/* Paper results */}
+              <div>
                 {fetching && (
                   <div className="flex items-center gap-1.5 text-muted-foreground py-1">
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -322,28 +410,34 @@ function SectionResearch({ articleTitle, sectionHeading, amazonUrl, amazonLabel 
                 )}
                 {papers && papers.length > 0 && (
                   <ul className="space-y-2.5">
-                    {papers.map((p) => (
-                      <li key={p.id} className="flex gap-2 items-start">
-                        <FileText className="w-3 h-3 text-primary/60 mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <a
-                            href={p.absUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-foreground/90 hover:text-primary transition leading-snug line-clamp-2"
-                          >
-                            {p.title}
-                          </a>
-                          <p className="text-muted-foreground text-[11px] mt-0.5">
-                            {p.authors.join(", ")}{p.authors.length === 3 ? " et al." : ""}
-                            {p.year ? ` · ${p.year}` : ""}
-                            {p.pdfUrl && p.pdfUrl !== p.absUrl && (
-                              <>{" · "}<a href={p.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-primary/80 hover:text-primary">Open Access PDF</a></>
+                    {papers.map((p) => {
+                      const citation = citationStyle === "APA" ? formatAPA(p) : formatTurabian(p);
+                      // Split citation at the DOI URL to make it a link
+                      const doiIdx = citation.lastIndexOf("https://doi.org/");
+                      const citationText = doiIdx > 0 ? citation.slice(0, doiIdx).trim() : citation;
+                      const doiUrl = doiIdx > 0 ? citation.slice(doiIdx) : "";
+                      // Render *italic* markers
+                      const renderCitation = (text: string) =>
+                        text.split(/(\*[^*]+\*)/).map((part, i) =>
+                          part.startsWith("*") && part.endsWith("*")
+                            ? <em key={i}>{part.slice(1, -1)}</em>
+                            : part
+                        );
+                      return (
+                        <li key={p.id} className="flex gap-2 items-start">
+                          <FileText className="w-3 h-3 text-primary/60 mt-0.5 shrink-0" />
+                          <p className="text-[11px] text-foreground/80 leading-relaxed">
+                            {renderCitation(citationText)}{" "}
+                            {doiUrl && (
+                              <a href={p.absUrl} target="_blank" rel="noopener noreferrer"
+                                className="text-primary/80 hover:text-primary break-all">
+                                {doiUrl}
+                              </a>
                             )}
                           </p>
-                        </div>
-                      </li>
-                    ))}
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
               </div>
@@ -390,6 +484,7 @@ export default function WikiReader() {
   const [showHistory, setShowHistory] = useState(false);
   const [suggestions, setSuggestions] = useState<{ title: string; url: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [citationStyle, setCitationStyle] = useState<CitationStyle>("APA");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -789,6 +884,8 @@ export default function WikiReader() {
                         sectionHeading={plainSection}
                         amazonUrl={amazonUrl}
                         amazonLabel={label}
+                        citationStyle={citationStyle}
+                        onStyleChange={setCitationStyle}
                       />
                     </div>
                   );
