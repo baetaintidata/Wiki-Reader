@@ -370,6 +370,17 @@
   font-style: normal;
 }
 
+/* Jump-to-citation pulse highlight */
+@keyframes cite-pulse {
+  0%   { background: transparent; }
+  20%  { background: hsl(var(--primary) / 0.18); outline: 2px solid hsl(var(--primary) / 0.3); outline-offset: 2px; border-radius: 3px; }
+  100% { background: transparent; outline-color: transparent; }
+}
+.cite-target-highlight {
+  animation: cite-pulse 2s ease forwards;
+  border-radius: 3px;
+}
+
 /* Image captions */
 .wiki-content .thumbcaption,
 .wiki-content figcaption {

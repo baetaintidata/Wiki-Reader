@@ -173,6 +173,100 @@ function splitIntoSections(html: string): ArticleSection[] {
   return sections;
 }
 
+// ── Citation parsing & APA / Turabian formatting ────────────────────────────
+
+function apifyAuthors(raw: string): string {
+  const parts = raw.split(/;\s+/);
+  const fmt = parts.map((a) => {
+    const m = a.match(/^([^,]+),\s+(.+)$/);
+    if (!m) return a;
+    const initials = m[2].split(/\s+/).map((g) => (g[0] ?? "").toUpperCase() + ".").join(" ");
+    return `${m[1]}, ${initials}`;
+  });
+  if (fmt.length === 1) return fmt[0];
+  if (fmt.length === 2) return `${fmt[0]}, & ${fmt[1]}`;
+  const last = fmt.pop()!;
+  return `${fmt.join("; ")}, & ${last}`;
+}
+
+interface ParsedCite {
+  type: "article" | "book";
+  authors: string; year: string; title: string; source: string;
+  volume?: string; issue?: string; pages?: string; doi?: string; edition?: string;
+}
+
+function parseCite(text: string): ParsedCite | null {
+  const t = text.replace(/\s+/g, " ").trim();
+  const baseM = t.match(/^(.+?)\s+\((\d{4}[a-z]?)\)\.\s+(.+)$/s);
+  if (!baseM) return null;
+  const [, authorsRaw, year, rest] = baseM;
+  const authors = authorsRaw.trim();
+  const editionM = rest.match(/\((\d+(?:st|nd|rd|th)\s+ed\.?)\)/i);
+
+  // Journal article: title in double-quotes
+  const articleM = rest.match(/^"([^"]+)"\.\s+(.+)$/s);
+  if (articleM) {
+    const title = articleM[1];
+    const remaining = articleM[2];
+    const journalEnd = remaining.search(/\.\s+(?:[A-Z]?\d|doi:|ISBN|hdl:|JSTOR|PMID|Archived|Retrieved)/);
+    const source = (journalEnd > 0 ? remaining.slice(0, journalEnd) : remaining.split(".")[0]).trim();
+    const volM = remaining.match(/\b([A-Z]?\d+)\s*\((\d+[–\-]?\d*)\)\s*:\s*([\d,\s–\-]+)/);
+    const doiM = remaining.match(/doi:([\S]+)/i);
+    return { type: "article", authors, year, title, source,
+      volume: volM?.[1], issue: volM?.[2], pages: volM?.[3]?.trim(), doi: doiM?.[1] };
+  }
+
+  // Book: plain title. Publisher. …
+  const bookM = rest.match(/^(.+?)\.\s+(.+)$/s);
+  if (bookM) {
+    const rawTitle = bookM[1].replace(/\s*\([^)]+ed\.?\)/i, "").trim();
+    const sourceRest = bookM[2];
+    const publisherEnd = sourceRest.search(/\.\s+(?:p\.|pp\.|ISBN|doi:|Retrieved)/i);
+    const source = (publisherEnd > 0 ? sourceRest.slice(0, publisherEnd) : sourceRest.split(".")[0]).trim();
+    const pagesM = sourceRest.match(/\bpp?\.\s*([\d–\-]+)/);
+    return { type: "book", authors, year, title: rawTitle, source,
+      edition: editionM?.[1], pages: pagesM?.[1] };
+  }
+
+  return null;
+}
+
+function formatCite(text: string, style: CitationStyle): string {
+  const p = parseCite(text);
+  if (!p) return text;
+
+  if (p.type === "article") {
+    const { authors, year, title, source, volume, issue, pages, doi } = p;
+    if (style === "APA") {
+      const auth = apifyAuthors(authors);
+      let loc = source;
+      if (volume) loc += `, ${volume}`;
+      if (issue) loc += `(${issue})`;
+      if (pages) loc += `, ${pages}`;
+      const doiStr = doi ? ` https://doi.org/${doi}` : "";
+      return `${auth} (${year}). ${title}. ${loc}.${doiStr}`;
+    } else {
+      const vol = volume ?? "";
+      const iss = issue ? `, no. ${issue}` : "";
+      const pg = pages ? `: ${pages}` : "";
+      return `${authors}. "${title}." ${source} ${vol}${iss} (${year})${pg}.`;
+    }
+  }
+
+  if (p.type === "book") {
+    const { authors, year, title, source, edition, pages } = p;
+    const ed = edition ? ` (${edition})` : "";
+    const pg = pages ? `, ${pages}` : "";
+    if (style === "APA") {
+      return `${apifyAuthors(authors)} (${year}). ${title}${ed}. ${source}${pg}.`;
+    } else {
+      return `${authors}. ${title}${ed}. ${source}, ${year}${pg}.`;
+    }
+  }
+
+  return text;
+}
+
 // Replace with your real Amazon Associates tag once approved
 const AMAZON_TAG = "wikireader-placeholder-20";
 
@@ -484,6 +578,9 @@ export default function WikiReader() {
   const [suggestions, setSuggestions] = useState<{ title: string; url: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [citationStyle, setCitationStyle] = useState<CitationStyle>("APA");
+  // Keep a ref so hover/click callbacks always see the current style without re-binding
+  const citationStyleRef = useRef<CitationStyle>(citationStyle);
+  citationStyleRef.current = citationStyle;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -612,18 +709,21 @@ export default function WikiReader() {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 
       const rect = target.getBoundingClientRect();
-      const popupHeight = 200;
+      const popupHeight = 220;
       const x = rect.left;
       const spaceBelow = window.innerHeight - rect.bottom;
       const y = spaceBelow >= popupHeight + 8 ? rect.bottom + 6 : rect.top - popupHeight - 6;
 
       const refId = href.slice(1);
       const refEl = document.getElementById(refId);
-      const refText = refEl?.querySelector(".reference-text")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const rawText = refEl?.querySelector(".reference-text")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
       const shortCite = target.getAttribute("data-cite-short") ?? target.textContent?.trim() ?? "";
 
-      if (refText) {
-        setPreview({ title: shortCite || refId, extract: refText, pageUrl: href, x, y });
+      if (rawText) {
+        const style = citationStyleRef.current;
+        const formatted = formatCite(rawText, style);
+        // title carries the short ref + style badge (encoded in pageUrl for detection)
+        setPreview({ title: shortCite || refId, extract: formatted, pageUrl: href, x, y });
       }
       return;
     }
@@ -689,6 +789,24 @@ export default function WikiReader() {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     activeHrefRef.current = null;
     setPreview(null);
+  }, []);
+
+  // Click on [n] footnote → smooth-scroll to reference entry + brief highlight
+  const handleArticleClick = useCallback((e: React.MouseEvent) => {
+    const target = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
+    if (!target) return;
+    const href = target.getAttribute("href") ?? "";
+    if (!href.startsWith("#cite_note-")) return;
+    e.preventDefault();
+    setPreview(null);
+    activeHrefRef.current = null;
+    const refId = href.slice(1);
+    const refEl = document.getElementById(refId);
+    if (!refEl) return;
+    refEl.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Brief pulse highlight
+    refEl.classList.add("cite-target-highlight");
+    setTimeout(() => refEl.classList.remove("cite-target-highlight"), 2000);
   }, []);
 
   // Close history dropdown on outside click
@@ -884,6 +1002,7 @@ export default function WikiReader() {
               className="mt-6"
               onMouseOver={handleMouseOver}
               onMouseOut={handleMouseOut}
+              onClick={handleArticleClick}
             >
               <h1
                 className="text-3xl font-bold text-foreground mb-1 font-sans"
@@ -1012,13 +1131,25 @@ export default function WikiReader() {
                 />
               )}
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground leading-tight mb-1 truncate">{preview.title}</p>
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{preview.extract}</p>
+                {preview.pageUrl.startsWith("#cite_note-") ? (
+                  <>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p className="text-sm font-semibold text-foreground leading-tight truncate">{preview.title}</p>
+                      <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 uppercase tracking-wide">{citationStyle}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-6">{preview.extract}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-foreground leading-tight mb-1 truncate">{preview.title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">{preview.extract}</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="border-t border-border px-3 py-1.5 flex items-center gap-1 text-xs text-primary">
               <ExternalLink className="w-3 h-3" />
-              <span>{preview.pageUrl.startsWith("#cite_note-") ? "Full citation in References section below" : "Click to open on Wikipedia"}</span>
+              <span>{preview.pageUrl.startsWith("#cite_note-") ? "Click footnote to jump to References" : "Click to open on Wikipedia"}</span>
             </div>
           </motion.div>
         )}
