@@ -88,11 +88,13 @@ function cleanWikiHtml(html: string): string {
   div.querySelectorAll(".navbox, .navbox-inner, .sistersitebox, .hatnote, .portal, .portalbox").forEach((el) => el.remove());
   div.querySelectorAll(".dmbox, .disambiguation").forEach((el) => el.remove());
   div.querySelectorAll(".mw-hidden-catlinks, #catlinks").forEach((el) => el.remove());
-  div.querySelectorAll(".references").forEach((el) => el.remove());
-  div.querySelectorAll("sup.reference, .reflist, .references-small").forEach((el) => el.remove());
+  div.querySelectorAll(".references-small").forEach((el) => el.remove());
+  // Hide backlinks (↑ arrows) and edit section links inside references — keep the text
+  div.querySelectorAll(".mw-cite-backlink").forEach((el) => el.remove());
   div.querySelectorAll("h2, h3").forEach((heading) => {
     const text = heading.textContent?.trim().toLowerCase() ?? "";
-    if (["see also", "references", "notes", "external links", "further reading", "bibliography"].includes(text)) {
+    // Only strip navigation/external sections; keep references, notes, bibliography
+    if (["see also", "external links", "further reading"].includes(text)) {
       let next = heading.nextElementSibling;
       while (next && next.tagName !== "H2") {
         const toRemove = next;
@@ -106,6 +108,12 @@ function cleanWikiHtml(html: string): string {
     const src = img.getAttribute("src");
     if (src && src.startsWith("//")) img.setAttribute("src", "https:" + src);
   });
+  // Move `title` on footnote anchors to data-cite-short so browser tooltip doesn't compete
+  div.querySelectorAll("sup.reference a[title]").forEach((el) => {
+    const a = el as HTMLAnchorElement;
+    a.setAttribute("data-cite-short", a.getAttribute("title") ?? "");
+    a.removeAttribute("title");
+  });
   div.querySelectorAll("a[href]").forEach((a) => {
     const href = a.getAttribute("href") ?? "";
     if (href.startsWith("/wiki/")) {
@@ -113,7 +121,10 @@ function cleanWikiHtml(html: string): string {
       a.setAttribute("target", "_blank");
       a.setAttribute("rel", "noopener noreferrer");
     } else if (href.startsWith("#")) {
-      a.setAttribute("href", "#");
+      // Preserve cite_note anchors for footnote hover; blank everything else
+      if (!href.startsWith("#cite_note-")) {
+        a.setAttribute("href", "#");
+      }
     }
   });
 
@@ -593,6 +604,30 @@ export default function WikiReader() {
     if (!target) return;
 
     const href = target.getAttribute("href") ?? "";
+
+    // ── Citation footnote hover ──────────────────────────────────────────────
+    if (href.startsWith("#cite_note-")) {
+      if (activeHrefRef.current === href) return;
+      activeHrefRef.current = href;
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+
+      const rect = target.getBoundingClientRect();
+      const popupHeight = 200;
+      const x = rect.left;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const y = spaceBelow >= popupHeight + 8 ? rect.bottom + 6 : rect.top - popupHeight - 6;
+
+      const refId = href.slice(1);
+      const refEl = document.getElementById(refId);
+      const refText = refEl?.querySelector(".reference-text")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+      const shortCite = target.getAttribute("data-cite-short") ?? target.textContent?.trim() ?? "";
+
+      if (refText) {
+        setPreview({ title: shortCite || refId, extract: refText, pageUrl: href, x, y });
+      }
+      return;
+    }
+
     if (!href.includes("wikipedia.org/wiki/")) return;
 
     // Don't re-fetch if same link
@@ -983,7 +1018,7 @@ export default function WikiReader() {
             </div>
             <div className="border-t border-border px-3 py-1.5 flex items-center gap-1 text-xs text-primary">
               <ExternalLink className="w-3 h-3" />
-              <span>Click to open on Wikipedia</span>
+              <span>{preview.pageUrl.startsWith("#cite_note-") ? "Full citation in References section below" : "Click to open on Wikipedia"}</span>
             </div>
           </motion.div>
         )}

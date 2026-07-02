@@ -320,10 +320,8 @@
   font-weight: 600;
 }
 
-/* Suppress Wikipedia chrome elements */
+/* Suppress Wikipedia chrome elements (NOT sup.reference — we want footnote markers) */
 .wiki-content .mw-editsection,
-.wiki-content .reference,
-.wiki-content sup.reference,
 .wiki-content .noprint,
 .wiki-content .mw-jump-link,
 .wiki-content #toc,
@@ -332,6 +330,44 @@
 .wiki-content .navbox-inner,
 .wiki-content .sistersitebox {
   display: none !important;
+}
+
+/* Footnote superscripts [1] [2] — styled, not hidden */
+.wiki-content sup.reference {
+  display: inline !important;
+  font-size: 0.7em;
+  line-height: 0;
+  vertical-align: super;
+}
+.wiki-content sup.reference a {
+  color: hsl(var(--primary));
+  text-decoration: none;
+  padding: 0 1px;
+}
+.wiki-content sup.reference a:hover {
+  text-decoration: underline;
+}
+
+/* References / Notes / Bibliography section list */
+.wiki-content .references {
+  font-size: 0.82rem;
+  line-height: 1.6;
+  padding-left: 1.2rem;
+}
+.wiki-content .references li {
+  margin-bottom: 0.4rem;
+  break-inside: avoid;
+}
+.wiki-content .references .reference-text {
+  color: hsl(var(--foreground));
+}
+/* Hide backlink arrows (already stripped in JS, belt-and-suspenders) */
+.wiki-content .mw-cite-backlink {
+  display: none !important;
+}
+/* Style cite elements inside references */
+.wiki-content .references cite {
+  font-style: normal;
 }
 
 /* Image captions */
