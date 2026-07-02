@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search, FlaskConical, ChevronDown, FileText } from "lucide-react";
 
@@ -265,6 +265,61 @@ function formatCite(text: string, style: CitationStyle): string {
   }
 
   return text;
+}
+
+// ── Inline citation replacement ──────────────────────────────────────────────
+// Produces "(Author, Year)" / "(Author Year)" from a parsed reference
+
+function buildInlineCite(rawText: string, style: CitationStyle): string {
+  const parsed = parseCite(rawText);
+  if (!parsed) {
+    // Fallback: grab first word + year
+    const yearM = rawText.match(/\b(1[89]\d\d|20\d\d)\b/);
+    const firstWord = rawText.split(/[\s,]/)[0] ?? "";
+    if (firstWord && yearM) {
+      return style === "APA" ? `(${firstWord}, ${yearM[1]})` : `(${firstWord} ${yearM[1]})`;
+    }
+    return `(${rawText.slice(0, 30).trim()})`;
+  }
+  const lastName = parsed.authors.split(/;\s+/)[0].split(",")[0].trim();
+  const { year, pages } = parsed;
+  const pg = pages ? (style === "APA" ? `, p. ${pages}` : `, ${pages}`) : "";
+  return style === "APA" ? `(${lastName}, ${year}${pg})` : `(${lastName} ${year}${pg})`;
+}
+
+// Transform sup.reference[n] → <span class="inline-cite">(Author, Year)</span>
+function applyInlineCitations(html: string, style: CitationStyle): string {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+
+  // Build refId → full citation text map
+  const refMap = new Map<string, string>();
+  div.querySelectorAll("li[id^='cite_note-']").forEach((li) => {
+    const id = li.getAttribute("id") ?? "";
+    const text = li.querySelector(".reference-text")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    if (id && text) refMap.set(id, text);
+  });
+
+  if (refMap.size === 0) return html; // no references to expand
+
+  div.querySelectorAll("sup.reference").forEach((sup) => {
+    const a = sup.querySelector("a[href^='#cite_note-']") as HTMLAnchorElement | null;
+    if (!a) return;
+    const refId = (a.getAttribute("href") ?? "").slice(1);
+    const rawText = refMap.get(refId) ?? "";
+    const inlineText = rawText ? buildInlineCite(rawText, style) : (a.textContent?.trim() ?? "");
+
+    const span = document.createElement("span");
+    span.className = "inline-cite";
+    span.setAttribute("data-ref-id", refId);
+    // Store full formatted citation for hover popup
+    span.setAttribute("data-cite-full", rawText ? formatCite(rawText, style) : rawText);
+    span.setAttribute("data-cite-short", a.getAttribute("data-cite-short") ?? "");
+    span.textContent = inlineText;
+    sup.replaceWith(span);
+  });
+
+  return div.innerHTML;
 }
 
 // Replace with your real Amazon Associates tag once approved
@@ -582,6 +637,13 @@ export default function WikiReader() {
   const citationStyleRef = useRef<CitationStyle>(citationStyle);
   citationStyleRef.current = citationStyle;
 
+  // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
+  const processedSections = useMemo(() => {
+    if (!article) return [];
+    const html = applyInlineCitations(article.html, citationStyle);
+    return splitIntoSections(html);
+  }, [article, citationStyle]);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewCacheRef = useRef<Map<string, LinkPreview | null>>(new Map());
@@ -697,12 +759,33 @@ export default function WikiReader() {
 
   // Link hover preview logic via event delegation
   const handleMouseOver = useCallback(async (e: React.MouseEvent) => {
+    // ── Inline-cite span hover ───────────────────────────────────────────────
+    const inlineEl = (e.target as HTMLElement).closest("span.inline-cite") as HTMLElement | null;
+    if (inlineEl) {
+      const refId = inlineEl.getAttribute("data-ref-id") ?? "";
+      const href = `#${refId}`;
+      if (activeHrefRef.current === href) return;
+      activeHrefRef.current = href;
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+
+      const rect = inlineEl.getBoundingClientRect();
+      const popupHeight = 220;
+      const x = rect.left;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const y = spaceBelow >= popupHeight + 8 ? rect.bottom + 6 : rect.top - popupHeight - 6;
+
+      const fullCite = inlineEl.getAttribute("data-cite-full") ?? "";
+      const shortCite = inlineEl.getAttribute("data-cite-short") ?? inlineEl.textContent?.trim() ?? "";
+      if (fullCite) setPreview({ title: shortCite || refId, extract: fullCite, pageUrl: href, x, y });
+      return;
+    }
+
     const target = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
     if (!target) return;
 
     const href = target.getAttribute("href") ?? "";
 
-    // ── Citation footnote hover ──────────────────────────────────────────────
+    // ── Citation footnote hover (anchor fallback in References list) ─────────
     if (href.startsWith("#cite_note-")) {
       if (activeHrefRef.current === href) return;
       activeHrefRef.current = href;
@@ -791,8 +874,23 @@ export default function WikiReader() {
     setPreview(null);
   }, []);
 
-  // Click on [n] footnote → smooth-scroll to reference entry + brief highlight
+  // Click on inline cite or [n] anchor → smooth-scroll to reference entry + highlight
   const handleArticleClick = useCallback((e: React.MouseEvent) => {
+    // Inline-cite span click
+    const inlineEl = (e.target as HTMLElement).closest("span.inline-cite") as HTMLElement | null;
+    if (inlineEl) {
+      e.preventDefault();
+      setPreview(null);
+      activeHrefRef.current = null;
+      const refId = inlineEl.getAttribute("data-ref-id") ?? "";
+      const refEl = refId ? document.getElementById(refId) : null;
+      if (!refEl) return;
+      refEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      refEl.classList.add("cite-target-highlight");
+      setTimeout(() => refEl.classList.remove("cite-target-highlight"), 2000);
+      return;
+    }
+    // Fallback: plain anchor cite link
     const target = (e.target as HTMLElement).closest("a[href]") as HTMLAnchorElement | null;
     if (!target) return;
     const href = target.getAttribute("href") ?? "";
@@ -800,11 +898,9 @@ export default function WikiReader() {
     e.preventDefault();
     setPreview(null);
     activeHrefRef.current = null;
-    const refId = href.slice(1);
-    const refEl = document.getElementById(refId);
+    const refEl = document.getElementById(href.slice(1));
     if (!refEl) return;
     refEl.scrollIntoView({ behavior: "smooth", block: "center" });
-    // Brief pulse highlight
     refEl.classList.add("cite-target-highlight");
     setTimeout(() => refEl.classList.remove("cite-target-highlight"), 2000);
   }, []);
@@ -1014,7 +1110,7 @@ export default function WikiReader() {
                 const plainTitle = new DOMParser()
                   .parseFromString(article.title, "text/html")
                   .body.textContent ?? article.title;
-                return splitIntoSections(article.html).map((section, i) => {
+                return processedSections.map((section, i) => {
                   const amazonUrl = buildAmazonUrl(plainTitle, section.heading);
                   const plainSection = section.heading
                     ? new DOMParser().parseFromString(section.heading, "text/html").body.textContent ?? ""

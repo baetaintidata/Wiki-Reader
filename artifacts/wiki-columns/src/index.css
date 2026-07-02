@@ -370,6 +370,23 @@
   font-style: normal;
 }
 
+/* Inline author-year citations replacing [n] superscripts */
+.wiki-content .inline-cite {
+  display: inline;
+  font-size: 0.82em;
+  color: hsl(var(--primary));
+  cursor: pointer;
+  white-space: nowrap;
+  border-radius: 2px;
+  padding: 0 1px;
+  transition: background 0.15s;
+}
+.wiki-content .inline-cite:hover {
+  background: hsl(var(--primary) / 0.1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Jump-to-citation pulse highlight */
 @keyframes cite-pulse {
   0%   { background: transparent; }
