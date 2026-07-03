@@ -440,6 +440,39 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   break-inside: avoid;
 }
 
+/* In 1-2 columns: float images left with margin */
+.wiki-content.cols-1 figure,
+.wiki-content.cols-2 figure,
+.wiki-content.cols-1 .thumb,
+.wiki-content.cols-2 .thumb {
+  float: left;
+  margin: 0 1.5rem 1rem 0;
+  max-width: 40%;
+}
+
+/* In 3+ columns: full width, no float */
+.wiki-content.cols-3 figure,
+.wiki-content.cols-4 figure,
+.wiki-content.cols-5 figure,
+.wiki-content.cols-3 .thumb,
+.wiki-content.cols-4 .thumb,
+.wiki-content.cols-5 .thumb {
+  float: none;
+  margin: 1rem 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* Clearfix after floated figures */
+.wiki-content.cols-1 figure::after,
+.wiki-content.cols-2 figure::after,
+.wiki-content.cols-1 .thumb::after,
+.wiki-content.cols-2 .thumb::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+
 @layer utilities {
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;

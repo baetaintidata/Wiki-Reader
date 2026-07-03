@@ -1132,7 +1132,7 @@ export default function WikiReader() {
           {loading && (
             <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-8">
               <div className="h-8 w-64 bg-muted rounded animate-pulse mb-6" />
-              <div className="wiki-content" style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}>
+              <div className={`wiki-content cols-${columns}`} style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}>
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="h-4 bg-muted rounded animate-pulse mb-3" style={{ width: `${65 + Math.random() * 35}%` }} />
                 ))}
@@ -1181,7 +1181,7 @@ export default function WikiReader() {
                         />
                       )}
                       <div
-                        className="wiki-content"
+                        className={`wiki-content cols-${columns}`}
                         style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
