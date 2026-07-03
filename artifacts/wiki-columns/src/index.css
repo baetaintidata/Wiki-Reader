@@ -111,6 +111,10 @@
   --app-font-sans: 'Inter', sans-serif;
   --app-font-serif: 'Linux Libertine', 'Georgia', 'Times', serif;
   --app-font-mono: Menlo, monospace;
+  /* Best-for-reading font stack, switched via body class */
+  --font-body-reading: 'Literata', 'Charter', 'Merriweather', 'Georgia', serif;
+  --font-body-serif: 'Source Serif 4', 'Merriweather', 'Georgia', serif;
+  --font-body-sans: 'Inter', 'Literata', 'Georgia', sans-serif;
   --radius: .375rem;
   --shadow-2xs: 0px 1px 2px 0px rgba(0,0,0,0.05);
   --shadow-xs: 0px 1px 3px 0px rgba(0,0,0,0.08);
@@ -242,9 +246,15 @@
   padding-bottom: 0.25rem;
 }
 
-/* Wikipedia-style content */
+/* Wikipedia-style content — body class switches the stack */
+body[data-reading-font="Literata"]   .wiki-content { font-family: 'Literata', 'Charter', 'Merriweather', 'Georgia', serif; }
+body[data-reading-font="Merriweather"] .wiki-content { font-family: 'Merriweather', 'Georgia', 'Times', serif; }
+body[data-reading-font="Source Serif 4"] .wiki-content { font-family: 'Source Serif 4', 'Merriweather', 'Georgia', serif; }
+body[data-reading-font="Charter"]    .wiki-content { font-family: 'Charter', 'Georgia', 'Times', serif; }
+body[data-reading-font="Inter"]     .wiki-content { font-family: 'Inter', 'Literata', 'Georgia', sans-serif; }
+
 .wiki-content {
-  font-family: var(--app-font-serif);
+  font-family: var(--font-body-reading);
   font-size: 0.9375rem;
   line-height: 1.7;
   color: hsl(var(--foreground));

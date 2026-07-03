@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search, FlaskConical, ChevronDown, FileText } from "lucide-react";
+import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search, FlaskConical, ChevronDown, FileText, Type } from "lucide-react";
 
 interface WikiArticle {
   title: string;
@@ -637,6 +637,16 @@ export default function WikiReader() {
   const citationStyleRef = useRef<CitationStyle>(citationStyle);
   citationStyleRef.current = citationStyle;
 
+  // Reading-font selector
+  type ReadingFont = "Literata" | "Merriweather" | "Source Serif 4" | "Charter" | "Inter";
+  const [readingFont, setReadingFont] = useState<ReadingFont>(() => {
+    try { return (localStorage.getItem("wiki-reader-font") as ReadingFont) ?? "Literata"; } catch { return "Literata"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("wiki-reader-font", readingFont); } catch {}
+    document.body.setAttribute("data-reading-font", readingFont);
+  }, [readingFont]);
+
   // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
   const processedSections = useMemo(() => {
     if (!article) return [];
@@ -1045,6 +1055,24 @@ export default function WikiReader() {
                 aria-label="Number of columns"
               />
             </div>
+          </div>
+
+          {/* Font selector for best reading */}
+          <div className="flex items-center gap-2 shrink-0 border-l border-border pl-3 ml-1">
+            <Type className="w-4 h-4 text-muted-foreground hidden sm:block" />
+            <select
+              value={readingFont}
+              onChange={(e) => setReadingFont(e.target.value as ReadingFont)}
+              className="text-xs bg-card border border-border rounded px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer"
+              aria-label="Reading font"
+              title="Choose a font optimized for long-form reading"
+            >
+              <option value="Literata">Literata</option>
+              <option value="Merriweather">Merriweather</option>
+              <option value="Source Serif 4">Source Serif 4</option>
+              <option value="Charter">Charter</option>
+              <option value="Inter">Inter (sans)</option>
+            </select>
           </div>
 
           {/* Citation style toggle */}
