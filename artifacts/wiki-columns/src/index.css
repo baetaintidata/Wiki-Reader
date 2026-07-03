@@ -247,11 +247,23 @@
 }
 
 /* Wikipedia-style content — body class switches the stack */
-body[data-reading-font="Literata"]   .wiki-content { font-family: 'Literata', 'Charter', 'Merriweather', 'Georgia', serif; }
-body[data-reading-font="Merriweather"] .wiki-content { font-family: 'Merriweather', 'Georgia', 'Times', serif; }
-body[data-reading-font="Source Serif 4"] .wiki-content { font-family: 'Source Serif 4', 'Merriweather', 'Georgia', serif; }
-body[data-reading-font="Charter"]    .wiki-content { font-family: 'Charter', 'Georgia', 'Times', serif; }
-body[data-reading-font="Inter"]     .wiki-content { font-family: 'Inter', 'Literata', 'Georgia', sans-serif; }
+body[data-reading-font="Literata"]        .wiki-content { font-family: 'Literata', 'Charter', 'Merriweather', 'Georgia', serif; }
+body[data-reading-font="Merriweather"]    .wiki-content { font-family: 'Merriweather', 'Georgia', 'Times', serif; }
+body[data-reading-font="Source Serif 4"]   .wiki-content { font-family: 'Source Serif 4', 'Merriweather', 'Georgia', serif; }
+body[data-reading-font="Charter"]         .wiki-content { font-family: 'Charter', 'Georgia', 'Times', serif; }
+body[data-reading-font="Inter"]          .wiki-content { font-family: 'Inter', 'Literata', 'Georgia', sans-serif; }
+body[data-reading-font="Open Sans"]      .wiki-content { font-family: 'Open Sans', 'Inter', 'Literata', sans-serif; }
+body[data-reading-font="Lexend"]         .wiki-content { font-family: 'Lexend', 'Inter', 'Open Sans', sans-serif; }
+body[data-reading-font="Georgia"]        .wiki-content { font-family: Georgia, 'Times New Roman', serif; }
+body[data-reading-font="Roboto"]         .wiki-content { font-family: 'Roboto', 'Open Sans', 'Inter', sans-serif; }
+body[data-reading-font="Atkinson Hyperlegible"] .wiki-content { font-family: 'Atkinson Hyperlegible', 'Lexend', 'Open Sans', sans-serif; }
+body[data-reading-font="Helvetica"]      .wiki-content { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+body[data-reading-font="San Francisco"]  .wiki-content { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI', sans-serif; }
+body[data-reading-font="Linux Libertine"] .wiki-content { font-family: 'Linux Libertine', 'Georgia', 'Times', serif; }
+body[data-reading-font="Times"]          .wiki-content { font-family: 'Times New Roman', Times, serif; }
+body[data-reading-font="Montserrat"]     .wiki-content { font-family: 'Montserrat', 'Inter', 'Open Sans', sans-serif; }
+body[data-reading-font="Baskerville"]    .wiki-content { font-family: 'Libre Baskerville', Georgia, 'Times New Roman', serif; }
+body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamond', 'Cormorant Garamond', Georgia, serif; }
 
 .wiki-content {
   font-family: var(--font-body-reading);

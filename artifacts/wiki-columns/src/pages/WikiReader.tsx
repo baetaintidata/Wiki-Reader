@@ -638,9 +638,16 @@ export default function WikiReader() {
   citationStyleRef.current = citationStyle;
 
   // Reading-font selector
-  type ReadingFont = "Literata" | "Merriweather" | "Source Serif 4" | "Charter" | "Inter";
+  type ReadingFont =
+    | "Literata" | "Merriweather" | "Source Serif 4" | "Charter" | "Inter"
+    | "Open Sans" | "Lexend" | "Georgia" | "Roboto" | "Atkinson Hyperlegible"
+    | "Helvetica" | "San Francisco" | "Linux Libertine" | "Times"
+    | "Montserrat" | "Baskerville" | "Garamond";
+
   const [readingFont, setReadingFont] = useState<ReadingFont>(() => {
-    try { return (localStorage.getItem("wiki-reader-font") as ReadingFont) ?? "Literata"; } catch { return "Literata"; }
+    const isAndroid = typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+    const defaultFont = isAndroid ? "Roboto" : "Literata";
+    try { return (localStorage.getItem("wiki-reader-font") as ReadingFont) ?? defaultFont; } catch { return defaultFont; }
   });
   useEffect(() => {
     try { localStorage.setItem("wiki-reader-font", readingFont); } catch {}
@@ -1067,11 +1074,29 @@ export default function WikiReader() {
               aria-label="Reading font"
               title="Choose a font optimized for long-form reading"
             >
-              <option value="Literata">Literata</option>
-              <option value="Merriweather">Merriweather</option>
-              <option value="Source Serif 4">Source Serif 4</option>
-              <option value="Charter">Charter</option>
-              <option value="Inter">Inter (sans)</option>
+              <optgroup label="Best for screen reading">
+                <option value="Literata">Literata</option>
+                <option value="Lexend">Lexend</option>
+                <option value="Atkinson Hyperlegible">Atkinson Hyperlegible</option>
+                <option value="Roboto">Roboto</option>
+                <option value="Inter">Inter</option>
+              </optgroup>
+              <optgroup label="Classic serifs">
+                <option value="Merriweather">Merriweather</option>
+                <option value="Source Serif 4">Source Serif 4</option>
+                <option value="Charter">Charter</option>
+                <option value="Georgia">Georgia</option>
+                <option value="Linux Libertine">Linux Libertine</option>
+                <option value="Times">Times</option>
+                <option value="Baskerville">Baskerville</option>
+                <option value="Garamond">Garamond</option>
+              </optgroup>
+              <optgroup label="Sans-serif">
+                <option value="Open Sans">Open Sans</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="San Francisco">San Francisco</option>
+              </optgroup>
             </select>
           </div>
 
