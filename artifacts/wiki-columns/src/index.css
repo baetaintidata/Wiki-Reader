@@ -371,7 +371,16 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   margin: 0;
 }
 
-/* ── Infobox / sidebar — float right, responsive width ── */
+/* ── Infobox / sidebar — float right, width = one computed column ── */
+/*
+ * --wiki-col-width is set as an inline CSS variable on every .wiki-content div
+ * in WikiReader.tsx:
+ *   calc((100% - (columns-1)*2rem) / columns)
+ * This matches the multi-column layout gap of 2rem between columns.
+ *
+ * For 1-2 columns the column is very wide, so we cap at 360px.
+ * For 3+ columns the column is already narrow, so we fill it fully.
+ */
 .wiki-content .infobox,
 .wiki-content .sidebar,
 .wiki-content .tmbox,
@@ -379,7 +388,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   float: right;
   clear: right;
   width: auto;
-  max-width: 100%;
+  max-width: var(--wiki-col-width, 100%);
   margin: 0 0 1rem 1.25rem;
   border-collapse: collapse;
   font-size: 0.8rem;
@@ -387,7 +396,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   column-span: none;
 }
 
-/* 1-2 columns: keep compact at 360px so it doesn't dominate wide columns */
+/* Cap at 360px for 1-2 column layouts (column is very wide there) */
 .wiki-content.cols-1 .infobox,
 .wiki-content.cols-1 .sidebar,
 .wiki-content.cols-1 .tmbox,
@@ -396,7 +405,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
 .wiki-content.cols-2 .sidebar,
 .wiki-content.cols-2 .tmbox,
 .wiki-content.cols-2 .mbox-small {
-  max-width: 360px;
+  max-width: min(360px, var(--wiki-col-width, 360px));
 }
 
 /* ── Wide data tables: span all columns so they don't bleed ── */

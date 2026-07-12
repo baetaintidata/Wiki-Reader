@@ -108,6 +108,15 @@ function cleanWikiHtml(html: string): string {
     const src = img.getAttribute("src");
     if (src && src.startsWith("//")) img.setAttribute("src", "https:" + src);
   });
+
+  // Strip inline width/max-width from infoboxes so our CSS variable can control sizing.
+  // Wikipedia bakes things like width="22em" or style="width:22em" that override CSS.
+  div.querySelectorAll(".infobox, .sidebar, .mbox-small, .tmbox").forEach((el) => {
+    const htmlEl = el as HTMLElement;
+    htmlEl.style.removeProperty("width");
+    htmlEl.style.removeProperty("max-width");
+    htmlEl.removeAttribute("width");
+  });
   // Move `title` on footnote anchors to data-cite-short so browser tooltip doesn't compete
   div.querySelectorAll("sup.reference a[title]").forEach((el) => {
     const a = el as HTMLAnchorElement;
@@ -1141,7 +1150,7 @@ export default function WikiReader() {
           {loading && (
             <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-8">
               <div className="h-8 w-64 bg-muted rounded animate-pulse mb-6" />
-              <div className={`wiki-content cols-${columns}`} style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}>
+              <div className={`wiki-content cols-${columns}`} style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ["--wiki-col-width" as string]: `calc((100% - ${(columns - 1) * 2}rem) / ${columns})` }}>
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="h-4 bg-muted rounded animate-pulse mb-3" style={{ width: `${65 + Math.random() * 35}%` }} />
                 ))}
@@ -1191,7 +1200,7 @@ export default function WikiReader() {
                       )}
                       <div
                         className={`wiki-content cols-${columns}`}
-                        style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))" }}
+                        style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ["--wiki-col-width" as string]: `calc((100% - ${(columns - 1) * 2}rem) / ${columns})` }}
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
 
