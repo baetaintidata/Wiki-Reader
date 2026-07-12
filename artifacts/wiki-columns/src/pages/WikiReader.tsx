@@ -128,6 +128,15 @@ function cleanWikiHtml(html: string): string {
     }
   });
 
+  // Wrap data tables (wikitable) in a column-spanning div so they don't
+  // bleed across column boundaries in multi-column layout.
+  div.querySelectorAll("table.wikitable").forEach((table) => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "wiki-table-wrap";
+    table.parentNode!.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+
   return div.innerHTML;
 }
 
