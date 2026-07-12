@@ -396,17 +396,9 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   column-span: none;
 }
 
-/* Cap at 360px for 1-2 column layouts (column is very wide there) */
-.wiki-content.cols-1 .infobox,
-.wiki-content.cols-1 .sidebar,
-.wiki-content.cols-1 .tmbox,
-.wiki-content.cols-1 .mbox-small,
-.wiki-content.cols-2 .infobox,
-.wiki-content.cols-2 .sidebar,
-.wiki-content.cols-2 .tmbox,
-.wiki-content.cols-2 .mbox-small {
-  max-width: min(360px, var(--wiki-col-width, 360px));
-}
+/* --wiki-col-width is set as a concrete px value by WikiReader.tsx via ResizeObserver.
+ * Logic: cols ≤ 2 → min(360, colWidth); cols ≥ 3 → max(360, colWidth).
+ * No CSS overrides needed here — JS handles all cases. */
 
 /* ── Wide data tables: span all columns so they don't bleed ── */
 .wiki-content .wiki-table-wrap {

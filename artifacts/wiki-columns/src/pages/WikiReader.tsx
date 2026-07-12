@@ -672,6 +672,34 @@ export default function WikiReader() {
     document.body.setAttribute("data-reading-font", readingFont);
   }, [readingFont]);
 
+  // Track main container width so we can compute real column width in px
+  const mainRef = useRef<HTMLElement>(null);
+  const [containerWidthPx, setContainerWidthPx] = useState(0);
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerWidthPx(entries[0].contentRect.width);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Column width in px: (containerWidth - gaps) / columns.
+  // Gap between columns is 2rem = 32px (at 16px root font size).
+  // For 1-2 cols cap at 360px (column is wide; infobox shouldn't dominate).
+  // For 3+ cols use at least 360px so the infobox never shrinks below a readable size.
+  const GAP_PX = 32; // 2rem
+  const rawColWidthPx = containerWidthPx > 0
+    ? (containerWidthPx - (columns - 1) * GAP_PX) / columns
+    : 360;
+  const infoboxMaxWidthPx = columns <= 2
+    ? Math.min(360, rawColWidthPx)
+    : Math.max(360, rawColWidthPx);
+  const colWidthStyle: Record<string, string> = {
+    "--wiki-col-width": `${Math.round(infoboxMaxWidthPx)}px`,
+  };
+
   // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
   const processedSections = useMemo(() => {
     if (!article) return [];
@@ -1137,7 +1165,7 @@ export default function WikiReader() {
         </div>
       </header>
 
-      <main className="max-w-screen-2xl mx-auto px-4 pb-16">
+      <main ref={mainRef} className="max-w-screen-2xl mx-auto px-4 pb-16">
         <AnimatePresence mode="wait">
           {/* Error */}
           {error && !loading && (
@@ -1150,7 +1178,7 @@ export default function WikiReader() {
           {loading && (
             <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="mt-8">
               <div className="h-8 w-64 bg-muted rounded animate-pulse mb-6" />
-              <div className={`wiki-content cols-${columns}`} style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ["--wiki-col-width" as string]: `calc((100% - ${(columns - 1) * 2}rem) / ${columns})` }}>
+              <div className={`wiki-content cols-${columns}`} style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ...colWidthStyle }}>
                 {Array.from({ length: 18 }).map((_, i) => (
                   <div key={i} className="h-4 bg-muted rounded animate-pulse mb-3" style={{ width: `${65 + Math.random() * 35}%` }} />
                 ))}
@@ -1200,7 +1228,7 @@ export default function WikiReader() {
                       )}
                       <div
                         className={`wiki-content cols-${columns}`}
-                        style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ["--wiki-col-width" as string]: `calc((100% - ${(columns - 1) * 2}rem) / ${columns})` }}
+                        style={{ columnCount: columns, columnGap: "2rem", columnRule: "1px solid hsl(var(--border))", ...colWidthStyle }}
                         dangerouslySetInnerHTML={{ __html: section.html }}
                       />
 
