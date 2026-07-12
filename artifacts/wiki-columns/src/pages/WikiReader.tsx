@@ -726,33 +726,31 @@ export default function WikiReader() {
     "--wiki-col-width": `${Math.round(infoboxWidthPx)}px`,
   };
 
-  // Classify data tables once the column width is reliably measured.
-  // Guard: skip entirely when containerWidthPx is 0 (not yet observed) or
-  // rawColWidthPx is negative/tiny (can happen briefly during transitions).
-  // CSS default is already column-span: none, so skipping is always safe.
-  useEffect(() => {
-    if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
-    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
-      const tablePx = parseInt(wrap.dataset.tablePx ?? "9999", 10);
-      // 20% tolerance for imprecise em estimates
-      const isWide = tablePx > rawColWidthPx * 1.2;
-      // Only add wiki-table-wide when we're sure; never remove it once added without reason
-      if (isWide) {
-        wrap.classList.add("wiki-table-wide");
-        wrap.classList.remove("wiki-table-narrow");
-      } else {
-        wrap.classList.add("wiki-table-narrow");
-        wrap.classList.remove("wiki-table-wide");
-      }
-    });
-  });
-
   // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
   const processedSections = useMemo(() => {
     if (!article) return [];
     const html = applyInlineCitations(article.html, citationStyle);
     return splitIntoSections(html);
   }, [article, citationStyle]);
+
+  // Classify data tables — runs ONLY when column geometry or article content changes,
+  // NOT on every render (link hover, preview state, etc. must not trigger this).
+  // Uses the table's actual rendered scrollWidth for accuracy instead of the
+  // estimated data-table-px, which may be wrong for tables with no declared width.
+  useEffect(() => {
+    if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
+    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
+      const table = wrap.querySelector("table");
+      // scrollWidth gives the natural content width regardless of overflow clipping
+      const measuredPx = table ? table.scrollWidth : 0;
+      // Fall back to the declared width estimate only if we couldn't measure
+      const declaredPx = parseInt(wrap.dataset.tablePx ?? "9999", 10);
+      const tableWidth = measuredPx > 0 ? measuredPx : declaredPx;
+      const isWide = tableWidth > rawColWidthPx * 1.2;
+      wrap.classList.toggle("wiki-table-wide", isWide);
+      wrap.classList.toggle("wiki-table-narrow", !isWide);
+    });
+  }, [containerWidthPx, columns, processedSections]);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
