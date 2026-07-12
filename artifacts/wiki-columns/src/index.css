@@ -387,8 +387,8 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
 .wiki-content .mbox-small {
   float: right;
   clear: right;
-  width: auto;
-  max-width: var(--wiki-col-width, 100%);
+  width: var(--wiki-col-width, 100%);
+  max-width: 100%;
   margin: 0 0 1rem 1.25rem;
   border-collapse: collapse;
   font-size: 0.8rem;

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, BookOpen, ArrowRight, X, Columns3, Clock, ExternalLink, ShoppingBag, Search, FlaskConical, ChevronDown, FileText, Type } from "lucide-react";
 
@@ -675,11 +675,13 @@ export default function WikiReader() {
   // Track main container width so we can compute real column width in px
   const mainRef = useRef<HTMLElement>(null);
   const [containerWidthPx, setContainerWidthPx] = useState(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      setContainerWidthPx(entries[0].contentRect.width);
+    // Measure immediately (synchronous, before paint) then keep watching
+    setContainerWidthPx(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver(() => {
+      setContainerWidthPx(el.getBoundingClientRect().width);
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -693,11 +695,13 @@ export default function WikiReader() {
   const rawColWidthPx = containerWidthPx > 0
     ? (containerWidthPx - (columns - 1) * GAP_PX) / columns
     : 360;
-  const infoboxMaxWidthPx = columns <= 2
+  // 1-2 cols: column is very wide — cap at 360px so infobox doesn't dominate.
+  // 3+ cols: use the exact column width (may be < 360px for many columns — that's correct).
+  const infoboxWidthPx = columns <= 2
     ? Math.min(360, rawColWidthPx)
-    : Math.max(360, rawColWidthPx);
+    : rawColWidthPx;
   const colWidthStyle: Record<string, string> = {
-    "--wiki-col-width": `${Math.round(infoboxMaxWidthPx)}px`,
+    "--wiki-col-width": `${Math.round(infoboxWidthPx)}px`,
   };
 
   // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
