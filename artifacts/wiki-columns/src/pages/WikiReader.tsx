@@ -726,19 +726,24 @@ export default function WikiReader() {
     "--wiki-col-width": `${Math.round(infoboxWidthPx)}px`,
   };
 
-  // Classify data tables after every render.
-  // Tables whose declared Wikipedia width fits in one column get column-span: none
-  // so text flows continuously through the section.
-  // Tables wider than one column get column-span: all.
+  // Classify data tables once the column width is reliably measured.
+  // Guard: skip entirely when containerWidthPx is 0 (not yet observed) or
+  // rawColWidthPx is negative/tiny (can happen briefly during transitions).
+  // CSS default is already column-span: none, so skipping is always safe.
   useEffect(() => {
-    if (!mainRef.current) return;
-    const colPx = rawColWidthPx > 0 ? rawColWidthPx : 9999;
+    if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
     mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
       const tablePx = parseInt(wrap.dataset.tablePx ?? "9999", 10);
-      // Allow 20% overflow margin for imprecise em estimates
-      const isNarrow = tablePx <= colPx * 1.2;
-      wrap.classList.toggle("wiki-table-narrow", isNarrow);
-      wrap.classList.toggle("wiki-table-wide", !isNarrow);
+      // 20% tolerance for imprecise em estimates
+      const isWide = tablePx > rawColWidthPx * 1.2;
+      // Only add wiki-table-wide when we're sure; never remove it once added without reason
+      if (isWide) {
+        wrap.classList.add("wiki-table-wide");
+        wrap.classList.remove("wiki-table-narrow");
+      } else {
+        wrap.classList.add("wiki-table-narrow");
+        wrap.classList.remove("wiki-table-wide");
+      }
     });
   });
 
