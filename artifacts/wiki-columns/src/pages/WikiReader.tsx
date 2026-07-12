@@ -137,11 +137,35 @@ function cleanWikiHtml(html: string): string {
     }
   });
 
-  // Wrap data tables (wikitable) in a column-spanning div so they don't
-  // bleed across column boundaries in multi-column layout.
+  // Wrap data tables in a classified wrapper.
+  // We inspect each table's declared Wikipedia width so the column flow can
+  // decide whether the table should stay inline (column-span: none) or span
+  // all columns (column-span: all).  The decision is applied later via a
+  // useEffect that knows the real column width in px.
   div.querySelectorAll("table.wikitable").forEach((table) => {
     const wrapper = document.createElement("div");
     wrapper.className = "wiki-table-wrap";
+
+    // Detect the table's intended width from its attribute or inline style.
+    const tEl = table as HTMLElement;
+    const rawWidth =
+      tEl.style.width || tEl.style.maxWidth || tEl.getAttribute("width") || "";
+
+    let estimatedPx = 9999; // default: treat as wide / unknown
+    if (rawWidth.endsWith("em")) {
+      estimatedPx = parseFloat(rawWidth) * 16; // 1em ≈ 16px
+    } else if (rawWidth.endsWith("px")) {
+      estimatedPx = parseFloat(rawWidth);
+    } else if (rawWidth.endsWith("%")) {
+      // percentage of page — treat as proportionally wide (assume 1200px page)
+      estimatedPx = (parseFloat(rawWidth) / 100) * 1200;
+    } else if (/^\d+$/.test(rawWidth.trim())) {
+      estimatedPx = parseFloat(rawWidth); // bare number (legacy HTML attribute)
+    }
+    // No width specified → table sizes itself to content → may be wide → 9999
+
+    wrapper.dataset.tablePx = String(Math.round(estimatedPx));
+
     table.parentNode!.insertBefore(wrapper, table);
     wrapper.appendChild(table);
   });
@@ -689,20 +713,34 @@ export default function WikiReader() {
 
   // Column width in px: (containerWidth - gaps) / columns.
   // Gap between columns is 2rem = 32px (at 16px root font size).
-  // For 1-2 cols cap at 360px (column is wide; infobox shouldn't dominate).
-  // For 3+ cols use at least 360px so the infobox never shrinks below a readable size.
+  // For 1-2 cols cap at 360px so infobox doesn't dominate.
+  // For 3+ cols use the exact column width.
   const GAP_PX = 32; // 2rem
   const rawColWidthPx = containerWidthPx > 0
     ? (containerWidthPx - (columns - 1) * GAP_PX) / columns
     : 360;
-  // 1-2 cols: column is very wide — cap at 360px so infobox doesn't dominate.
-  // 3+ cols: use the exact column width (may be < 360px for many columns — that's correct).
   const infoboxWidthPx = columns <= 2
     ? Math.min(360, rawColWidthPx)
     : rawColWidthPx;
   const colWidthStyle: Record<string, string> = {
     "--wiki-col-width": `${Math.round(infoboxWidthPx)}px`,
   };
+
+  // Classify data tables after every render.
+  // Tables whose declared Wikipedia width fits in one column get column-span: none
+  // so text flows continuously through the section.
+  // Tables wider than one column get column-span: all.
+  useEffect(() => {
+    if (!mainRef.current) return;
+    const colPx = rawColWidthPx > 0 ? rawColWidthPx : 9999;
+    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
+      const tablePx = parseInt(wrap.dataset.tablePx ?? "9999", 10);
+      // Allow 20% overflow margin for imprecise em estimates
+      const isNarrow = tablePx <= colPx * 1.2;
+      wrap.classList.toggle("wiki-table-narrow", isNarrow);
+      wrap.classList.toggle("wiki-table-wide", !isNarrow);
+    });
+  });
 
   // Pre-process article HTML: replace [n] with (Author, Year) spans; re-runs when style changes
   const processedSections = useMemo(() => {

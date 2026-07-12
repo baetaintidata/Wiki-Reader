@@ -400,15 +400,25 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
  * Logic: cols ≤ 2 → min(360, colWidth); cols ≥ 3 → max(360, colWidth).
  * No CSS overrides needed here — JS handles all cases. */
 
-/* ── Wide data tables: span all columns so they don't bleed ── */
+/* ── Data tables: classified by JS into narrow (inline) or wide (spanning) ── */
 .wiki-content .wiki-table-wrap {
-  column-span: all;
+  /* Default before JS classifies: no column-span, scrollable */
   display: block;
   overflow-x: auto;
   margin-bottom: 1rem;
+  break-inside: avoid;
+}
+/* Narrow table: declared Wikipedia width fits inside one column.
+ * Flows inline with the text — text continues to fill other columns naturally. */
+.wiki-content .wiki-table-narrow {
+  column-span: none;
+  max-width: 100%;
+}
+/* Wide table: wider than one column. Spans all columns like a full-page element. */
+.wiki-content .wiki-table-wide {
+  column-span: all;
 }
 .wiki-content .wiki-table-wrap .wikitable {
-  width: 100%;
   min-width: max-content;
 }
 .wiki-content .infobox th,
