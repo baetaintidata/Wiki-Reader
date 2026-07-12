@@ -321,13 +321,97 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   margin-bottom: 0.25rem;
 }
 
-/* Infobox and tables — span all columns or keep inline */
+/* ── Wikipedia hlist: render lists inline with · separators ── */
+.wiki-content .hlist dl,
+.wiki-content .hlist ol,
+.wiki-content .hlist ul {
+  margin: 0;
+  padding: 0;
+}
+.wiki-content .hlist dd,
+.wiki-content .hlist dt,
+.wiki-content .hlist li {
+  display: inline;
+  margin: 0;
+}
+.wiki-content .hlist.hlist-separated dd + dd::before,
+.wiki-content .hlist.hlist-separated li + li::before,
+.wiki-content .hlist dd + dd::before,
+.wiki-content .hlist li + li::before,
+.wiki-content .hlist dt + dt::before {
+  content: " · ";
+  font-weight: bold;
+}
+.wiki-content .hlist dd::after,
+.wiki-content .hlist dt::after {
+  content: ": ";
+}
+.wiki-content .hlist dd:last-child::after,
+.wiki-content .hlist dt:last-child::after {
+  content: none;
+}
+.wiki-content .hlist ol {
+  counter-reset: listitem;
+}
+.wiki-content .hlist ol li {
+  counter-increment: listitem;
+}
+.wiki-content .hlist ol li::before {
+  content: " " counter(listitem) "\a0";
+}
+
+/* ── plainlist: remove bullet formatting ── */
+.wiki-content .plainlist ul,
+.wiki-content .plainlist ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.wiki-content .plainlist li {
+  margin: 0;
+}
+
+/* ── Infobox / sidebar — float right, don't stretch full width ── */
+.wiki-content .infobox,
+.wiki-content .sidebar,
+.wiki-content .tmbox,
+.wiki-content .mbox-small {
+  float: right;
+  clear: right;
+  width: auto;
+  max-width: 280px;
+  margin: 0 0 1rem 1.25rem;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  break-inside: avoid;
+  column-span: none;
+}
+.wiki-content .infobox th,
+.wiki-content .infobox td,
+.wiki-content .sidebar th,
+.wiki-content .sidebar td {
+  padding: 0.25rem 0.5rem;
+}
+.wiki-content .infobox caption,
+.wiki-content .sidebar-title-with-pretitle,
+.wiki-content .sidebar-title {
+  font-weight: 700;
+  text-align: center;
+  padding: 0.3rem;
+}
+
+/* ── General wikitables / data tables — full width, proper borders ── */
 .wiki-content table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1rem;
   font-size: 0.875rem;
   break-inside: avoid;
+}
+
+/* Infoboxes and sidebars already override width above; keep data tables full-width */
+.wiki-content .wikitable {
+  width: 100%;
 }
 
 .wiki-content table th,
