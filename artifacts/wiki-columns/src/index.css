@@ -371,7 +371,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   margin: 0;
 }
 
-/* ── Infobox / sidebar — float right, don't stretch full width ── */
+/* ── Infobox / sidebar — float right, responsive width ── */
 .wiki-content .infobox,
 .wiki-content .sidebar,
 .wiki-content .tmbox,
@@ -379,12 +379,24 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   float: right;
   clear: right;
   width: auto;
-  max-width: 280px;
+  max-width: 100%;
   margin: 0 0 1rem 1.25rem;
   border-collapse: collapse;
   font-size: 0.8rem;
   break-inside: avoid;
   column-span: none;
+}
+
+/* 1-2 columns: keep compact at 320px so it doesn't dominate wide columns */
+.wiki-content.cols-1 .infobox,
+.wiki-content.cols-1 .sidebar,
+.wiki-content.cols-1 .tmbox,
+.wiki-content.cols-1 .mbox-small,
+.wiki-content.cols-2 .infobox,
+.wiki-content.cols-2 .sidebar,
+.wiki-content.cols-2 .tmbox,
+.wiki-content.cols-2 .mbox-small {
+  max-width: 320px;
 }
 .wiki-content .infobox th,
 .wiki-content .infobox td,
