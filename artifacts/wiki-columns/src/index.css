@@ -404,6 +404,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
 .wiki-content .wiki-table-wrap {
   /* Safe default: stays in the column flow. JS may upgrade to wiki-table-wide. */
   column-span: none;
+  position: relative;
   display: block;
   overflow-x: auto;
   margin-bottom: 1rem;
@@ -417,6 +418,91 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
 }
 .wiki-content .wiki-table-wrap .wikitable {
   min-width: max-content;
+}
+
+/* ── Expand button (appears on table hover) ── */
+.wiki-expand-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 5;
+  line-height: 1;
+}
+.wiki-table-wrap:hover .wiki-expand-btn {
+  opacity: 1;
+}
+.wiki-expand-btn:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+/* ── Table popup panel ── */
+.wiki-table-popup {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: min(92vw, 960px);
+  max-height: 72vh;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.wiki-table-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.875rem;
+  border-bottom: 1px solid hsl(var(--border));
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: hsl(var(--muted-foreground));
+  flex-shrink: 0;
+  text-transform: uppercase;
+}
+.wiki-table-popup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  line-height: 1;
+}
+.wiki-table-popup-close:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.wiki-table-popup-body {
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+  flex: 1;
+}
+/* Inside the popup, tables are unconstrained — full natural width with scroll */
+.wiki-table-popup-body table {
+  width: max-content !important;
+  min-width: 100%;
 }
 .wiki-content .infobox th,
 .wiki-content .infobox td,

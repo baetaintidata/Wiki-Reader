@@ -668,6 +668,7 @@ export default function WikiReader() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [article, setArticle] = useState<WikiArticle | null>(null);
+  const [popupTable, setPopupTable] = useState<string | null>(null);
   const [columns, setColumns] = useState(3);
   const [preview, setPreview] = useState<LinkPreview | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>(loadHistory);
@@ -733,54 +734,83 @@ export default function WikiReader() {
     return splitIntoSections(html);
   }, [article, citationStyle]);
 
-  // ── Phase 1: Measure natural table widths ────────────────────────────────────
-  // We cannot reliably measure scrollWidth in-place because the live layout has
-  // column-count:N and `width:100%` on tables, which inflates scrollWidth to the
-  // column width even for narrow tables. Instead we clone each wrapper into a
-  // hidden off-screen probe, set `width:max-content` on the clone's table to
-  // strip the CSS `width:100%` rule, and read scrollWidth there. This gives the
-  // true natural content width regardless of the current column geometry.
-  // Measurement is stored in data-table-px-measured and never repeated for the
-  // same DOM node (same article), so column-count changes don't cause re-measurement.
-  useEffect(() => {
+  // ── Phase 1: Measure natural table widths (before paint) ────────────────────
+  // Off-screen probes fail because browsers skip layout for detached nodes.
+  // Instead we measure IN-PLACE by briefly collapsing each .wiki-content div
+  // to column-count:1 (overriding its inline style), then setting width:max-content
+  // on each table to remove the width:100% CSS rule. scrollWidth then returns
+  // the true natural content width. useLayoutEffect fires before paint so the
+  // user never sees the 1-column interim state.
+  useLayoutEffect(() => {
     if (!mainRef.current || containerWidthPx < 100) return;
-    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
-      if (wrap.dataset.tablePxMeasured) return; // already measured for this article
-      const clone = wrap.cloneNode(true) as HTMLElement;
-      const tbl = clone.querySelector<HTMLElement>("table");
-      if (!tbl) return;
-      // Override width:100% so the table sizes to its content, not its container.
-      tbl.style.width = "max-content";
-      const probe = document.createElement("div");
-      probe.style.cssText =
-        "position:fixed;top:-9999px;left:-9999px;" +
-        `width:${containerWidthPx}px;visibility:hidden;overflow:hidden;`;
-      probe.appendChild(clone);
-      document.body.appendChild(probe);
-      const naturalPx = tbl.scrollWidth;
-      document.body.removeChild(probe);
-      if (naturalPx > 0) wrap.dataset.tablePxMeasured = String(naturalPx);
-    });
-  }, [processedSections, containerWidthPx]); // re-runs on new article OR first container measure
 
-  // ── Phase 2: Classify using stored natural widths ─────────────────────────
-  // Inline (column-span:none) if the table's natural width fits within 2 columns;
-  // span-all (column-span:all) otherwise. The 2-column threshold changes with
-  // column count and container width, but the MEASURED width is always the
-  // table's true natural width — never the constrained in-layout width.
-  // This effect runs after Phase 1 in the same flush (React preserves order),
-  // so new articles are always measured before they are classified.
+    // Collect all multi-column wrappers and save their current columnCount
+    const contentDivs = Array.from(
+      mainRef.current.querySelectorAll<HTMLElement>(".wiki-content")
+    );
+    const saved = contentDivs.map((d) => d.style.columnCount);
+    // Collapse to 1 column so tables are unconstrained
+    contentDivs.forEach((d) => { d.style.columnCount = "1"; });
+
+    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
+      if (wrap.dataset.tablePxMeasured) return; // already measured, skip
+      const tbl = wrap.querySelector<HTMLElement>("table");
+      if (!tbl) return;
+      const prevW = tbl.style.width;
+      tbl.style.width = "max-content"; // strip width:100% from CSS
+      const nat = tbl.scrollWidth;     // now reflects true content width
+      tbl.style.width = prevW;
+      if (nat > 0) wrap.dataset.tablePxMeasured = String(nat);
+    });
+
+    // Restore column counts exactly as they were
+    contentDivs.forEach((d, i) => { d.style.columnCount = saved[i]; });
+  }, [processedSections, containerWidthPx]);
+
+  // ── Phase 2: Classify + insert expand buttons (after paint) ──────────────
+  // Reads stored natural widths. Inline if ≤ 2 column widths; span-all if wider.
+  // Also inserts a small "⤢" button on each table; clicking it opens the table
+  // in a floating popup so wide tables are always fully readable.
   useEffect(() => {
     if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
     const twoColPx = rawColWidthPx * 2 + GAP_PX;
     mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
       const naturalPx = parseInt(wrap.dataset.tablePxMeasured ?? "0", 10);
-      // If measurement failed (0), default to inline — safer than span-all.
       const isWide = naturalPx > 0 && naturalPx > twoColPx;
       wrap.classList.toggle("wiki-table-wide", isWide);
       wrap.classList.toggle("wiki-table-narrow", !isWide);
+
+      // Insert expand button once per wrapper
+      if (!wrap.querySelector(".wiki-expand-btn")) {
+        const btn = document.createElement("button");
+        btn.className = "wiki-expand-btn";
+        btn.title = "Open table in popup";
+        btn.setAttribute("aria-label", "Expand table");
+        btn.innerHTML =
+          `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
+          `<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>` +
+          `<line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>` +
+          `</svg>`;
+        wrap.appendChild(btn);
+      }
     });
   }, [containerWidthPx, columns, processedSections]);
+
+  // Click delegation for expand buttons (stable — mainRef and setPopupTable never change)
+  useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const handler = (e: MouseEvent) => {
+      const btn = (e.target as HTMLElement).closest(".wiki-expand-btn");
+      if (!btn) return;
+      e.stopPropagation();
+      const wrap = btn.closest<HTMLElement>(".wiki-table-wrap");
+      const tbl = wrap?.querySelector("table");
+      if (tbl) setPopupTable(tbl.outerHTML);
+    };
+    main.addEventListener("click", handler);
+    return () => main.removeEventListener("click", handler);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inputRef = useRef<HTMLInputElement>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1375,6 +1405,27 @@ export default function WikiReader() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Table expand popup — non-modal floating panel */}
+      {popupTable && (
+        <div className="wiki-table-popup">
+          <div className="wiki-table-popup-header">
+            <span>Table</span>
+            <button
+              className="wiki-table-popup-close"
+              onClick={() => setPopupTable(null)}
+              aria-label="Close table popup"
+            >
+              ✕
+            </button>
+          </div>
+          <div
+            className="wiki-table-popup-body wiki-content"
+            style={{ columnCount: 1 }}
+            dangerouslySetInnerHTML={{ __html: popupTable }}
+          />
+        </div>
+      )}
 
       {/* Link hover preview popup */}
       <AnimatePresence>
