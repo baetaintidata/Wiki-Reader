@@ -137,36 +137,48 @@ function cleanWikiHtml(html: string): string {
     }
   });
 
-  // Wrap data tables in a classified wrapper.
-  // We inspect each table's declared Wikipedia width so the column flow can
-  // decide whether the table should stay inline (column-span: none) or span
-  // all columns (column-span: all).  The decision is applied later via a
-  // useEffect that knows the real column width in px.
-  div.querySelectorAll("table.wikitable").forEach((table) => {
-    const wrapper = document.createElement("div");
-    wrapper.className = "wiki-table-wrap";
+  // Wrap data tables in a two-layer structure:
+  //   .wiki-table-outer  — column-span target + positioning context for the button
+  //   .wiki-table-wrap   — overflow-x:auto scroll container (no overflow clipping on button)
+  // The expand button lives inside .wiki-table-outer but OUTSIDE .wiki-table-wrap,
+  // so it is never clipped by the horizontal scroll container.
+  const expandBtnSvg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
+    `<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>` +
+    `<line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>` +
+    `</svg>`;
 
+  div.querySelectorAll("table.wikitable").forEach((table) => {
     // Detect the table's intended width from its attribute or inline style.
     const tEl = table as HTMLElement;
     const rawWidth =
       tEl.style.width || tEl.style.maxWidth || tEl.getAttribute("width") || "";
 
-    let estimatedPx = 9999; // default: treat as wide / unknown
-    if (rawWidth.endsWith("em")) {
-      estimatedPx = parseFloat(rawWidth) * 16; // 1em ≈ 16px
-    } else if (rawWidth.endsWith("px")) {
-      estimatedPx = parseFloat(rawWidth);
-    } else if (rawWidth.endsWith("%")) {
-      // percentage of page — treat as proportionally wide (assume 1200px page)
-      estimatedPx = (parseFloat(rawWidth) / 100) * 1200;
-    } else if (/^\d+$/.test(rawWidth.trim())) {
-      estimatedPx = parseFloat(rawWidth); // bare number (legacy HTML attribute)
-    }
-    // No width specified → table sizes itself to content → may be wide → 9999
+    let estimatedPx = 9999;
+    if (rawWidth.endsWith("em")) estimatedPx = parseFloat(rawWidth) * 16;
+    else if (rawWidth.endsWith("px")) estimatedPx = parseFloat(rawWidth);
+    else if (rawWidth.endsWith("%")) estimatedPx = (parseFloat(rawWidth) / 100) * 1200;
+    else if (/^\d+$/.test(rawWidth.trim())) estimatedPx = parseFloat(rawWidth);
 
+    // Inner scroll wrapper
+    const wrapper = document.createElement("div");
+    wrapper.className = "wiki-table-wrap";
     wrapper.dataset.tablePx = String(Math.round(estimatedPx));
 
-    table.parentNode!.insertBefore(wrapper, table);
+    // Outer container: column-span + button anchor (no overflow)
+    const outer = document.createElement("div");
+    outer.className = "wiki-table-outer";
+
+    // Expand button — sibling to scroll wrapper, never clipped by overflow-x:auto
+    const btn = document.createElement("button");
+    btn.className = "wiki-expand-btn";
+    btn.title = "Open table in popup";
+    btn.setAttribute("aria-label", "Expand table");
+    btn.innerHTML = expandBtnSvg;
+    outer.appendChild(btn);
+
+    outer.appendChild(wrapper);
+    table.parentNode!.insertBefore(outer, table);
     wrapper.appendChild(table);
   });
 
@@ -767,36 +779,23 @@ export default function WikiReader() {
     contentDivs.forEach((d, i) => { d.style.columnCount = saved[i]; });
   }, [processedSections, containerWidthPx]);
 
-  // ── Phase 2: Classify + insert expand buttons (after paint) ──────────────
-  // Reads stored natural widths. Inline if ≤ 2 column widths; span-all if wider.
-  // Also inserts a small "⤢" button on each table; clicking it opens the table
-  // in a floating popup so wide tables are always fully readable.
+  // ── Phase 2: Classify tables (after paint) ───────────────────────────────
+  // Reads stored natural widths. Applies wiki-table-wide / wiki-table-narrow
+  // to .wiki-table-outer (the column-span target). The expand button is already
+  // baked into the HTML by cleanWikiHtml — no DOM insertion needed here.
   useEffect(() => {
     if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
     const twoColPx = rawColWidthPx * 2 + GAP_PX;
-    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
-      const naturalPx = parseInt(wrap.dataset.tablePxMeasured ?? "0", 10);
+    mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-outer").forEach((outer) => {
+      const wrap = outer.querySelector<HTMLElement>(".wiki-table-wrap");
+      const naturalPx = parseInt(wrap?.dataset.tablePxMeasured ?? "0", 10);
       const isWide = naturalPx > 0 && naturalPx > twoColPx;
-      wrap.classList.toggle("wiki-table-wide", isWide);
-      wrap.classList.toggle("wiki-table-narrow", !isWide);
-
-      // Insert expand button once per wrapper
-      if (!wrap.querySelector(".wiki-expand-btn")) {
-        const btn = document.createElement("button");
-        btn.className = "wiki-expand-btn";
-        btn.title = "Open table in popup";
-        btn.setAttribute("aria-label", "Expand table");
-        btn.innerHTML =
-          `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">` +
-          `<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>` +
-          `<line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>` +
-          `</svg>`;
-        wrap.appendChild(btn);
-      }
+      outer.classList.toggle("wiki-table-wide", isWide);
+      outer.classList.toggle("wiki-table-narrow", !isWide);
     });
   }, [containerWidthPx, columns, processedSections]);
 
-  // Click delegation for expand buttons (stable — mainRef and setPopupTable never change)
+  // Click delegation for expand buttons — baked into HTML, always present
   useEffect(() => {
     const main = mainRef.current;
     if (!main) return;
@@ -804,8 +803,8 @@ export default function WikiReader() {
       const btn = (e.target as HTMLElement).closest(".wiki-expand-btn");
       if (!btn) return;
       e.stopPropagation();
-      const wrap = btn.closest<HTMLElement>(".wiki-table-wrap");
-      const tbl = wrap?.querySelector("table");
+      const outer = btn.closest<HTMLElement>(".wiki-table-outer");
+      const tbl = outer?.querySelector("table");
       if (tbl) setPopupTable(tbl.outerHTML);
     };
     main.addEventListener("click", handler);

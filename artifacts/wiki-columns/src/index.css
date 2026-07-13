@@ -400,27 +400,37 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
  * Logic: cols ≤ 2 → min(360, colWidth); cols ≥ 3 → max(360, colWidth).
  * No CSS overrides needed here — JS handles all cases. */
 
-/* ── Data tables: always inline by default, span-all only when JS confirms wide ── */
-.wiki-content .wiki-table-wrap {
-  /* Safe default: stays in the column flow. JS may upgrade to wiki-table-wide. */
+/* ── Data tables ────────────────────────────────────────────────────────────
+ * Two-layer structure:
+ *   .wiki-table-outer  — column-span target + button anchor (no overflow)
+ *   .wiki-table-wrap   — horizontal scroll container only
+ * This separation prevents overflow-x:auto from clipping the expand button. */
+
+.wiki-content .wiki-table-outer {
+  /* Default: stays inside the column. JS adds wiki-table-wide when appropriate. */
   column-span: none;
-  position: relative;
+  position: relative;   /* anchor for the expand button */
   display: block;
-  overflow-x: auto;
   margin-bottom: 1rem;
   break-inside: avoid;
-  max-width: 100%;
 }
-/* Wide table: JS has measured the column width and confirmed this table is wider.
- * Only applied when containerWidthPx is a reliable non-zero value. */
-.wiki-content .wiki-table-wide {
+.wiki-content .wiki-table-outer.wiki-table-wide {
   column-span: all;
 }
-.wiki-content .wiki-table-wrap .wikitable {
-  min-width: max-content;
+.wiki-content .wiki-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  display: block;
+}
+/* Allow text to wrap in data-table cells to keep tables as narrow as possible.
+ * overflow-wrap handles long unbreakable strings (URLs, codes) gracefully. */
+.wiki-content .wiki-table-wrap .wikitable th,
+.wiki-content .wiki-table-wrap .wikitable td {
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 
-/* ── Expand button (appears on table hover) ── */
+/* ── Expand button (appears on table hover, always present in DOM) ── */
 .wiki-expand-btn {
   position: absolute;
   top: 4px;
@@ -440,7 +450,7 @@ body[data-reading-font="Garamond"]       .wiki-content { font-family: 'EB Garamo
   z-index: 5;
   line-height: 1;
 }
-.wiki-table-wrap:hover .wiki-expand-btn {
+.wiki-table-outer:hover .wiki-expand-btn {
   opacity: 1;
 }
 .wiki-expand-btn:hover {
