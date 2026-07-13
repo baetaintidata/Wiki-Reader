@@ -733,20 +733,39 @@ export default function WikiReader() {
     return splitIntoSections(html);
   }, [article, citationStyle]);
 
-  // Classify data tables — runs ONLY when column geometry or article content changes,
-  // NOT on every render (link hover, preview state, etc. must not trigger this).
-  // Uses the table's actual rendered scrollWidth for accuracy instead of the
-  // estimated data-table-px, which may be wrong for tables with no declared width.
+  // Classify data tables into inline (≤ 2 column widths) or span-all (> 2 column widths).
+  //
+  // Key design decisions:
+  // 1. Natural width is measured ONCE on first encounter (when the table is freshly
+  //    rendered in column-span:none default state) and stored in data-table-px-measured.
+  //    Subsequent column-count changes read the stored value — never re-measure —
+  //    so the reference width is stable and doesn't shift with the column geometry.
+  // 2. Threshold = 2 column widths (not 1.2×), matching the user's intent:
+  //    "inline if fits in 2 columns, span-all otherwise."
+  //    This means a 400px table stays inline whether you're at 3 cols (380px each,
+  //    threshold 792px) or 5 cols (220px each, threshold 472px).
+  // 3. If measurement fails (scrollWidth = 0), default to inline — safer UX.
   useEffect(() => {
     if (!mainRef.current || containerWidthPx < 100 || rawColWidthPx < 50) return;
+
+    // 2-column threshold: a table must exceed the width of 2 side-by-side columns
+    // (including the gap between them) before we give it span-all treatment.
+    const twoColPx = rawColWidthPx * 2 + GAP_PX;
+
     mainRef.current.querySelectorAll<HTMLElement>(".wiki-table-wrap").forEach((wrap) => {
-      const table = wrap.querySelector("table");
-      // scrollWidth gives the natural content width regardless of overflow clipping
-      const measuredPx = table ? table.scrollWidth : 0;
-      // Fall back to the declared width estimate only if we couldn't measure
-      const declaredPx = parseInt(wrap.dataset.tablePx ?? "9999", 10);
-      const tableWidth = measuredPx > 0 ? measuredPx : declaredPx;
-      const isWide = tableWidth > rawColWidthPx * 1.2;
+      // Measure and store natural content width on first encounter only.
+      // At that point the table is in column-span:none (CSS default) and
+      // min-width:max-content forces it to its full natural width.
+      if (!wrap.dataset.tablePxMeasured) {
+        const table = wrap.querySelector<HTMLElement>("table");
+        const natural = table?.scrollWidth ?? 0;
+        if (natural > 0) wrap.dataset.tablePxMeasured = String(natural);
+      }
+
+      const naturalPx = parseInt(wrap.dataset.tablePxMeasured ?? "0", 10);
+      // naturalPx === 0 means measurement failed → keep inline (safe default)
+      const isWide = naturalPx > 0 && naturalPx > twoColPx;
+
       wrap.classList.toggle("wiki-table-wide", isWide);
       wrap.classList.toggle("wiki-table-narrow", !isWide);
     });
